@@ -75,9 +75,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Firebase Dynamic URL Discovery fallback
+  // Firebase Dynamic URL Discovery fallback
   let isCheckingFirebase = false;
-  async function checkFirebaseForUpdatedUrl() {
-    if (isCheckingFirebase) return;
+  async function checkFirebaseForUpdatedUrl(token, attemptedUrl = '') {
+    if (isCheckingFirebase) return null;
     isCheckingFirebase = true;
     try {
       console.log('[Remote] Checking Firebase for updated PC connection endpoint...');
@@ -87,11 +88,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const freshUrlRaw = data.public_url || data.ngrok_url || data.local_url;
         if (freshUrlRaw) {
           const freshUrl = normalizeUrl(freshUrlRaw);
-          const activeSavedUrl = localStorage.getItem('tilux_url') || '';
-          if (freshUrl && currentToken) {
+          // If on HTTPS deployment, require HTTPS/WSS URL
+          const isPageHttps = window.location.protocol === 'https:';
+          if (isPageHttps && freshUrl.startsWith('http://')) {
+            console.warn('[Remote] Firebase returned HTTP URL on HTTPS page:', freshUrl);
+            return null;
+          }
+          if (freshUrl && freshUrl !== attemptedUrl) {
             console.log('[Remote] Found updated PC URL from Firebase:', freshUrl);
-            showToast('Connecting via live remote tunnel from Firebase...', 'info');
-            connectSocket(freshUrl, currentToken);
+            return freshUrl;
           }
         }
       }
@@ -100,6 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       isCheckingFirebase = false;
     }
+    return null;
   }
 
   // Drawer Toggle
@@ -113,15 +119,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // Toast Helper
+  // Toast Helper with Anti-Spam & Deduplication
   window.showToast = function(msg, type = 'info') {
     const container = document.getElementById('toast-container');
     if (!container) return;
+
+    // Filter duplicate toasts
+    const existingSpans = container.querySelectorAll('.toast span');
+    for (let s of existingSpans) {
+      if (s.textContent === msg) return;
+    }
+
+    // Cap max visible toasts to prevent screen flooding
+    while (container.children.length >= 2) {
+      container.removeChild(container.firstChild);
+    }
+
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     let iconClass = type === 'error' ? 'fa-circle-xmark' : (type === 'success' ? 'fa-circle-check' : 'fa-circle-info');
     toast.innerHTML = `<i class="fa-solid ${iconClass}"></i> <span>${msg}</span>`;
     container.appendChild(toast);
+
     setTimeout(() => {
       toast.classList.add('fade-out');
       setTimeout(() => toast.remove(), 400);
@@ -136,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function connectSocket(url, connToken) {
+  async function connectSocket(url, connToken) {
     const targetUrl = normalizeUrl(url);
     if (!targetUrl || !connToken) {
       showToast('Please enter PC Server URL and Pairing Token', 'error');
@@ -144,10 +163,20 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    // Handle HTTPS Deployment Mixed Content Protection
     if (window.location.protocol === 'https:' && targetUrl.startsWith('http://')) {
-      console.warn('[Remote] Mixed Content Warning: HTTPS deployment connecting to HTTP LAN URL.');
-      showToast('HTTPS deployment detected. Connecting via live tunnel from Firebase...', 'info');
-      checkFirebaseForUpdatedUrl();
+      console.warn('[Remote] Mixed Content Protection: HTTPS deployment cannot connect directly to HTTP LAN URL.');
+      showToast('HTTPS deployment detected. Looking up secure remote tunnel...', 'info');
+      const secureTunnelUrl = await checkFirebaseForUpdatedUrl(connToken, targetUrl);
+      if (secureTunnelUrl && secureTunnelUrl.startsWith('https://')) {
+        showToast('Connected via secure live tunnel from Firebase!', 'success');
+        connectSocket(secureTunnelUrl, connToken);
+        return;
+      } else {
+        showToast('HTTPS Mixed Content: Please use an HTTPS tunnel (Ngrok) or access over HTTP on LAN.', 'error');
+        resetConnectBtn();
+        return;
+      }
     }
 
     if (socket && socket.connected) {
@@ -168,9 +197,9 @@ document.addEventListener('DOMContentLoaded', () => {
     socket = io(targetUrl, {
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 3000,
+      reconnectionAttempts: 3,
+      reconnectionDelay: 1500,
+      reconnectionDelayMax: 4000,
       timeout: 10000
     });
 
@@ -182,16 +211,25 @@ document.addEventListener('DOMContentLoaded', () => {
       socket.emit('pair_device', { token: connToken });
     });
 
-    socket.on('connect_error', (err) => {
+    socket.on('connect_error', async (err) => {
       console.error('[Remote] Socket Error:', err);
       connectErrCount++;
       if (connectErrCount === 1) {
         showToast('Connecting to PC...', 'info');
+        const fallbackUrl = await checkFirebaseForUpdatedUrl(connToken, targetUrl);
+        if (fallbackUrl && fallbackUrl !== targetUrl) {
+          showToast('Connecting via live remote tunnel from Firebase...', 'info');
+          if (socket) socket.disconnect();
+          connectSocket(fallbackUrl, connToken);
+          return;
+        }
       }
       if (connectErrCount >= 2) {
-        checkFirebaseForUpdatedUrl();
+        if (socket) socket.disconnect();
+        showToast('Connection failed. Verify PC server is running & pairing token is correct.', 'error');
+        updateBadge('Connection Failed', false);
+        resetConnectBtn();
       }
-      resetConnectBtn();
     });
 
     let hasShownConnectedToast = false;
