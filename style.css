@@ -197,7 +197,7 @@ body {
    ========================================================================== */
 .main-content {
     flex-grow: 1;
-    background: linear-gradient(180deg, var(--bg-main-top) 0%, var(--bg-main) 100%);
+    background: #07060a;
     display: flex;
     flex-direction: column;
     position: relative;
@@ -211,9 +211,9 @@ body {
     justify-content: space-between;
     align-items: center;
     padding: 14px 18px;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
-    background: rgba(15, 15, 17, 0.4);
-    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(7, 6, 10, 0.85);
+    backdrop-filter: blur(16px);
     z-index: 10;
 }
 
@@ -316,16 +316,16 @@ body {
     width: 100%;
     height: 100%;
     border-radius: 50%;
-    background: radial-gradient(circle at 30% 30%, #e0c3fc, #8ec5fc, #a855f7);
+    background: radial-gradient(circle at 30% 30%, #ddd6fe, #a855f7, #5b21b6);
     box-shadow: 
-        0 0 30px rgba(168, 85, 247, 0.6),
-        inset -10px -10px 20px rgba(0,0,0,0.5);
+        0 0 35px rgba(139, 92, 246, 0.65),
+        inset -10px -10px 20px rgba(0,0,0,0.6);
     animation: breathe 4s ease-in-out infinite alternate;
 }
 
 @keyframes breathe {
-    0% { transform: scale(0.95); box-shadow: 0 0 20px rgba(168, 85, 247, 0.4), inset -10px -10px 20px rgba(0,0,0,0.5); }
-    100% { transform: scale(1.05); box-shadow: 0 0 45px rgba(168, 85, 247, 0.8), inset -10px -10px 20px rgba(0,0,0,0.5); }
+    0% { transform: scale(0.95); box-shadow: 0 0 25px rgba(139, 92, 246, 0.4), inset -10px -10px 20px rgba(0,0,0,0.6); }
+    100% { transform: scale(1.05); box-shadow: 0 0 50px rgba(139, 92, 246, 0.85), inset -10px -10px 20px rgba(0,0,0,0.6); }
 }
 
 .orb-container.docked {
@@ -341,7 +341,7 @@ body {
     font-weight: 600;
     margin-bottom: 24px;
     color: #fff;
-    text-shadow: 0 0 20px rgba(168, 85, 247, 0.3);
+    text-shadow: 0 0 20px rgba(139, 92, 246, 0.35);
 }
 
 .action-pills {
@@ -352,19 +352,26 @@ body {
 }
 
 .pill {
-    background-color: var(--pill-bg);
-    border: 1px solid var(--border-color);
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     color: var(--text-main);
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-size: 12px;
+    padding: 10px 18px;
+    border-radius: 9999px;
+    font-size: 13px;
+    font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s ease;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
 }
-.pill:hover { background-color: rgba(255,255,255,0.1); }
+.pill:hover {
+    background-color: rgba(139, 92, 246, 0.2);
+    border-color: #8b5cf6;
+    color: #ffffff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(139, 92, 246, 0.3);
+}
 
 /* ==========================================================================
    INPUT SECTION
@@ -377,12 +384,19 @@ body {
 }
 
 .input-box {
-    background-color: rgba(25, 20, 35, 0.75);
-    backdrop-filter: blur(20px);
+    background-color: rgba(15, 12, 24, 0.85);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
     border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 18px;
-    padding: 12px 16px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    border-radius: 24px;
+    padding: 14px 18px;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6), 0 0 25px rgba(139, 92, 246, 0.1);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input-box:focus-within {
+    border-color: #8b5cf6;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6), 0 0 25px rgba(139, 92, 246, 0.25);
 }
 
 .input-top {
@@ -669,12 +683,19 @@ body {
 }
 
 .message.user .msg-content {
-    background-color: var(--panel-bg);
-    border: 1px solid rgba(255,255,255,0.1);
+    background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+    border: none;
+    color: #ffffff;
+    border-radius: 20px 20px 4px 20px;
+    box-shadow: 0 4px 20px rgba(139, 92, 246, 0.35);
 }
 
 .message.ai .msg-content {
-    background-color: transparent;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px 20px 20px 4px;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(12px);
 }
 
 /* Code & Formatting */
