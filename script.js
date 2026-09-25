@@ -65,12 +65,13 @@ document.addEventListener('DOMContentLoaded', () => {
   function normalizeUrl(rawUrl) {
     let clean = (rawUrl || '').trim();
     if (!clean) return '';
+    let isHttps = clean.toLowerCase().startsWith('https://') || clean.toLowerCase().startsWith('wss://');
     clean = clean.replace(/^(wss?:\/\/|https?:\/\/)/i, '');
     clean = clean.replace(/\/+$/, '');
-    if (!clean.includes(':')) {
+    if (!clean.includes(':') && !clean.includes('ngrok') && !clean.includes('cloudflare') && !clean.includes('vercel') && !clean.includes('firebase')) {
       clean = clean + ':8932';
     }
-    return 'http://' + clean;
+    return (isHttps ? 'https://' : 'http://') + clean;
   }
 
   // Firebase Dynamic URL Discovery fallback
@@ -83,11 +84,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const resp = await fetch('https://tiluxasm-default-rtdb.firebaseio.com/users/default_user/device.json');
       if (resp.ok) {
         const data = await resp.json();
-        if (data && data.ngrok_url) {
-          const freshUrl = normalizeUrl(data.ngrok_url);
+        const freshUrlRaw = data.public_url || data.ngrok_url || data.local_url;
+        if (freshUrlRaw) {
+          const freshUrl = normalizeUrl(freshUrlRaw);
           const activeSavedUrl = localStorage.getItem('tilux_url') || '';
-          if (freshUrl && freshUrl !== activeSavedUrl && currentToken) {
+          if (freshUrl && currentToken) {
             console.log('[Remote] Found updated PC URL from Firebase:', freshUrl);
+            showToast('Connecting via live remote tunnel from Firebase...', 'info');
             connectSocket(freshUrl, currentToken);
           }
         }
@@ -125,11 +128,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 3500);
   };
 
+  function resetConnectBtn() {
+    const btn = document.getElementById('btnConnect');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<span>Connect to PC</span> <i class="fa-solid fa-plug"></i>';
+    }
+  }
+
   function connectSocket(url, connToken) {
     const targetUrl = normalizeUrl(url);
+    if (!targetUrl || !connToken) {
+      showToast('Please enter PC Server URL and Pairing Token', 'error');
+      resetConnectBtn();
+      return;
+    }
+
+    if (window.location.protocol === 'https:' && targetUrl.startsWith('http://')) {
+      console.warn('[Remote] Mixed Content Warning: HTTPS deployment connecting to HTTP LAN URL.');
+      showToast('HTTPS deployment detected. Connecting via live tunnel from Firebase...', 'info');
+      checkFirebaseForUpdatedUrl();
+    }
+
     if (socket && socket.connected) {
       if (targetUrl === normalizeUrl(serverUrlInput.value) && connToken === currentToken) {
         console.log('[Remote] Already connected to this target');
+        resetConnectBtn();
         return;
       }
       socket.disconnect();
@@ -144,10 +168,10 @@ document.addEventListener('DOMContentLoaded', () => {
     socket = io(targetUrl, {
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: Infinity,
+      reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 20000
+      reconnectionDelayMax: 3000,
+      timeout: 10000
     });
 
     let connectErrCount = 0;
@@ -160,18 +184,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     socket.on('connect_error', (err) => {
       console.error('[Remote] Socket Error:', err);
-      if (!isPaired) {
-        updateBadge('Connecting to PC...', false);
-      }
       connectErrCount++;
-      if (connectErrCount >= 6) {
+      if (connectErrCount === 1) {
+        showToast('Connecting to PC...', 'info');
+      }
+      if (connectErrCount >= 2) {
         checkFirebaseForUpdatedUrl();
       }
+      resetConnectBtn();
     });
 
     let hasShownConnectedToast = false;
 
     socket.on('paired', (data) => {
+      resetConnectBtn();
       if (data.status === 'success') {
         isPaired = true;
         pcName = data.pc_name || 'Tilux-PC';
@@ -194,7 +220,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       } else {
         console.warn('[Remote] Pair authorization status:', data.status);
-        updateBadge('Pairing Failed: Check Token', false);
+        updateBadge('Pairing Failed: Invalid Token', false);
+        showToast('Pairing Failed: Invalid Pairing Token. Check token on PC screen.', 'error');
       }
     });
 
