@@ -23,27 +23,27 @@
     <div id="pairScreen" class="pair-screen">
       <div class="auth-card">
         <div class="auth-header">
-          <div class="auth-icon-badge">
-            <i class="fa-solid fa-mobile-screen-button"></i>
+          <div class="auth-orb-glow">
+            <div class="mini-orb"></div>
           </div>
-          <h2 class="auth-title">Pair with Tilux PC</h2>
-          <p class="auth-subtitle">Scan the QR code from your PC app or enter connection details manually.</p>
+          <h2 class="auth-title">Connect to Tilux PC</h2>
+          <p class="auth-subtitle">Scan the QR code displayed on your PC screen or enter connection keys manually.</p>
         </div>
 
-        <button type="button" id="btnScan" class="btn-auth-submit" style="margin-bottom: 20px; background: linear-gradient(135deg, #00F2FE, #a855f7);">
-          <i class="fa-solid fa-qrcode"></i> SCAN QR CODE
+        <button type="button" id="btnScan" class="btn-auth-scan">
+          <i class="fa-solid fa-qrcode"></i> <span>Scan QR Code</span>
         </button>
 
         <div class="divider">
           <div class="div-line"></div>
-          <span class="div-text">OR MANUAL PAIRING</span>
+          <span class="div-text">OR ENTER MANUAL CREDENTIALS</span>
           <div class="div-line"></div>
         </div>
 
         <div class="auth-input-group">
           <label class="auth-label">PC SERVER URL</label>
           <div class="auth-input-wrapper">
-            <i class="fa-solid fa-network-wired left-icon"></i>
+            <i class="fa-solid fa-server left-icon"></i>
             <input id="serverUrlInput" class="auth-input" type="text" placeholder="http://192.168.1.100:8932" autocomplete="off" />
           </div>
         </div>
@@ -51,13 +51,13 @@
         <div class="auth-input-group">
           <label class="auth-label">PAIRING TOKEN</label>
           <div class="auth-input-wrapper">
-            <i class="fa-solid fa-key left-icon"></i>
+            <i class="fa-solid fa-shield-halved left-icon"></i>
             <input id="tokenInput" class="auth-input" type="text" placeholder="pair_tilux_xxxxxxxx" autocomplete="off" />
           </div>
         </div>
 
         <button type="button" id="btnConnect" class="btn-auth-submit">
-          <span>Connect to PC</span> <i class="fa-solid fa-plug"></i>
+          <span>Connect to PC</span> <i class="fa-solid fa-arrow-right-to-bracket"></i>
         </button>
       </div>
     </div>

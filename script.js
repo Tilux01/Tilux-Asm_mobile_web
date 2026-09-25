@@ -985,24 +985,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function parseQR(data) {
     let url = '', tok = '';
+    console.log('[Remote QR] Raw Scanned Data:', data);
     try {
       const obj = JSON.parse(data);
-      url = obj.url || '';
-      tok = obj.token || '';
+      url = obj.url || obj.serverUrl || obj.server || '';
+      tok = obj.token || obj.pairing_token || obj.pairToken || '';
     } catch (e) {
       const u = data.match(/(https?:\/\/[^\s]+)/i);
       if (u) url = u[1];
-      const t = data.match(/token=([^&\s]+)/i);
-      if (t) tok = t[1];
+      const t = data.match(/token=([^&\s]+)/i) || data.match(/pair_tilux_[a-zA-Z0-9_-]+/i);
+      if (t) tok = t[1] || t[0];
     }
 
-    if (url && tok) {
-      serverUrlInput.value = url;
-      tokenInput.value = tok;
-      connectSocket(url, tok);
-    } else if (url) {
-      serverUrlInput.value = url;
-      showToast('URL Scanned! Enter Pair Token from PC screen and connect.', 'info');
+    if (!url && serverUrlInput.value) url = serverUrlInput.value;
+    if (!tok && tokenInput.value) tok = tokenInput.value;
+
+    if (url || tok) {
+      if (url) serverUrlInput.value = url;
+      if (tok) tokenInput.value = tok;
+
+      const btn = document.getElementById('btnConnect');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Connecting...';
+      }
+
+      showToast('QR Code Scanned! Auto-connecting...', 'success');
+      connectSocket(url || serverUrlInput.value, tok || tokenInput.value);
+    } else {
+      showToast('Could not read connection details from QR code.', 'error');
     }
   }
 
