@@ -102,32 +102,50 @@ document.addEventListener('DOMContentLoaded', () => {
     return (isHttps ? 'https://' : 'http://') + clean;
   }
 
-  // Firebase Dynamic URL Discovery fallback
-  async function checkFirebaseForUpdatedUrl(token, attemptedUrl = '') {
+  // Firebase Host Discovery & Connection Resolution
+  async function checkFirebaseForUpdatedUrl(hostIdInput = '', tokenInput = '', attemptedUrl = '') {
     if (isCheckingFirebase) return null;
     isCheckingFirebase = true;
     try {
-      console.log('[Remote] Checking Firebase for updated PC connection endpoint...');
-      const resp = await fetch('https://tiluxasm-default-rtdb.firebaseio.com/users/default_user/device.json');
+      let targetHost = (hostIdInput || '').trim();
+      let fetchUrl = 'https://tiluxasm-default-rtdb.firebaseio.com/users/default_user/device.json';
+      
+      if (targetHost && (targetHost.startsWith('tilux_host_') || !targetHost.includes('.'))) {
+        fetchUrl = `https://tiluxasm-default-rtdb.firebaseio.com/hosts/${targetHost}.json`;
+      }
+
+      console.log('[Remote] Looking up Host state from Firebase:', fetchUrl);
+      const resp = await fetch(fetchUrl, {
+        headers: { 'bypass-tunnel-reminder': 'true' }
+      });
       if (resp.ok) {
         const data = await resp.json();
+        if (!data) {
+          console.warn('[Remote] No Host found for ID:', targetHost);
+          return null;
+        }
+
+        // Validate Pair Token if host node has pair_token set
+        if (tokenInput && data.pair_token && data.pair_token.trim() !== tokenInput.trim()) {
+          console.warn('[Remote] Pair token mismatch for Host:', targetHost);
+          showToast('Invalid Pair Token for this Host ID', 'error');
+          return { error: 'Invalid Pair Token for this Host ID' };
+        }
+
         const freshUrlRaw = data.tunnel_url || data.public_url || data.local_url;
         if (freshUrlRaw) {
           const freshUrl = normalizeUrl(freshUrlRaw);
-          // If on HTTPS deployment, require HTTPS/WSS URL
           const isPageHttps = window.location.protocol === 'https:';
           if (isPageHttps && freshUrl.startsWith('http://')) {
             console.warn('[Remote] Firebase returned HTTP URL on HTTPS page:', freshUrl);
             return null;
           }
-          if (freshUrl && freshUrl !== attemptedUrl) {
-            console.log('[Remote] Found updated PC URL from Firebase:', freshUrl);
-            return freshUrl;
-          }
+          console.log('[Remote] Resolved live PC URL from Firebase:', freshUrl);
+          return freshUrl;
         }
       }
     } catch (e) {
-      console.warn('[Remote] Firebase URL sync lookup error:', e);
+      console.warn('[Remote] Firebase URL lookup error:', e);
     } finally {
       isCheckingFirebase = false;
     }
@@ -155,26 +173,40 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function connectSocket(url, connToken) {
-    let targetUrl = normalizeUrl(url);
-    if (!targetUrl || !connToken) {
-      showToast('Please enter PC Pairing Token', 'error');
+  async function connectSocket(hostOrUrl, connToken) {
+    const rawInput = (hostOrUrl || '').trim();
+    const pairToken = (connToken || '').trim();
+
+    if (!rawInput || !pairToken) {
+      showToast('Please enter Host ID and Pair Token', 'error');
       resetConnectBtn();
       return;
     }
 
-    // Fetch latest tunnel URL from Firebase Realtime DB registry
-    if (!targetUrl.startsWith('https://') && !targetUrl.includes('loca.lt') && !targetUrl.includes('ngrok')) {
-      console.log('[Remote] Looking up live PC tunnel URL from Firebase...');
-      showToast('Discovering PC live tunnel...', 'info');
-      const secureTunnelUrl = await checkFirebaseForUpdatedUrl(connToken, targetUrl);
-      if (secureTunnelUrl && (secureTunnelUrl.startsWith('https://') || secureTunnelUrl.includes('loca.lt'))) {
-        targetUrl = secureTunnelUrl;
+    let targetUrl = rawInput;
+
+    // Check if input is a Host ID or requires Firebase lookup
+    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://') && !targetUrl.includes('loca.lt') && !targetUrl.includes('ngrok')) {
+      console.log('[Remote] Looking up Host ID from Firebase:', rawInput);
+      showToast('Connecting to Host...', 'info');
+      const resolved = await checkFirebaseForUpdatedUrl(rawInput, pairToken);
+      if (resolved && resolved.error) {
+        resetConnectBtn();
+        return;
       }
+      if (resolved && typeof resolved === 'string') {
+        targetUrl = resolved;
+      } else {
+        showToast('Host ID not found or offline. Ensure Tilux is running on PC.', 'error');
+        resetConnectBtn();
+        return;
+      }
+    } else {
+      targetUrl = normalizeUrl(targetUrl);
     }
 
     if (socket && socket.connected) {
-      if (targetUrl === normalizeUrl(serverUrlInput.value) && connToken === currentToken) {
+      if (targetUrl === normalizeUrl(serverUrlInput.value) && pairToken === currentToken) {
         console.log('[Remote] Already connected to this target');
         resetConnectBtn();
         return;
@@ -182,8 +214,12 @@ document.addEventListener('DOMContentLoaded', () => {
       socket.disconnect();
     }
 
-    serverUrlInput.value = targetUrl;
-    currentToken = connToken;
+    serverUrlInput.value = rawInput;
+    tokenInput.value = pairToken;
+    currentToken = pairToken;
+
+    localStorage.setItem('tilux_url', rawInput);
+    localStorage.setItem('tilux_token', pairToken);
 
     updateBadge('Connecting via Tunnel...', false);
 
@@ -1078,24 +1114,26 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function parseQR(data) {
-    let url = '', tok = '';
+    let hostOrUrl = '', tok = '';
     console.log('[Remote QR] Raw Scanned Data:', data);
     try {
       const obj = JSON.parse(data);
-      url = obj.url || obj.serverUrl || obj.server || '';
+      hostOrUrl = obj.host_id || obj.hostId || obj.url || obj.serverUrl || '';
       tok = obj.token || obj.pairing_token || obj.pairToken || '';
     } catch (e) {
+      const h = data.match(/(tilux_host_[a-zA-Z0-9_-]+)/i);
+      if (h) hostOrUrl = h[1];
       const u = data.match(/(https?:\/\/[^\s]+)/i);
-      if (u) url = u[1];
-      const t = data.match(/token=([^&\s]+)/i) || data.match(/pair_tilux_[a-zA-Z0-9_-]+/i);
+      if (!hostOrUrl && u) hostOrUrl = u[1];
+      const t = data.match(/token=([^&\s]+)/i) || data.match(/(tilux_pair_[a-zA-Z0-9_-]+)/i);
       if (t) tok = t[1] || t[0];
     }
 
-    if (!url && serverUrlInput.value) url = serverUrlInput.value;
+    if (!hostOrUrl && serverUrlInput.value) hostOrUrl = serverUrlInput.value;
     if (!tok && tokenInput.value) tok = tokenInput.value;
 
-    if (url || tok) {
-      if (url) serverUrlInput.value = url;
+    if (hostOrUrl || tok) {
+      if (hostOrUrl) serverUrlInput.value = hostOrUrl;
       if (tok) tokenInput.value = tok;
 
       const btn = document.getElementById('btnConnect');
@@ -1105,7 +1143,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       showToast('QR Code Scanned! Auto-connecting...', 'success');
-      connectSocket(url || serverUrlInput.value, tok || tokenInput.value);
+      connectSocket(hostOrUrl, tok);
     } else {
       showToast('Could not read connection details from QR code.', 'error');
     }
