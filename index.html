@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Tilux Remote</title>
+  <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="%23a855f7"><path d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zm0-352a96 96 0 1 1 0 192 96 96 0 1 1 0-192z"/></svg>'>
+  
+  <!-- Google Fonts & Icons -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Vendor Libraries -->
+  <script src="vendor/socket.io.min.js"></script>
+  <script src="vendor/jsQR.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="root" class="root">
+    <!-- Unpaired Connection Screen -->
+    <div id="pairScreen" class="pair-screen">
+      <div class="auth-card">
+        <div class="auth-header">
+          <div class="auth-icon-badge">
+            <i class="fa-solid fa-mobile-screen-button"></i>
+          </div>
+          <h2 class="auth-title">Pair with Tilux PC</h2>
+          <p class="auth-subtitle">Scan the QR code from your PC app or enter connection details manually.</p>
+        </div>
+
+        <button type="button" id="btnScan" class="btn-auth-submit" style="margin-bottom: 20px; background: linear-gradient(135deg, #00F2FE, #a855f7);">
+          <i class="fa-solid fa-qrcode"></i> SCAN QR CODE
+        </button>
+
+        <div class="divider">
+          <div class="div-line"></div>
+          <span class="div-text">OR MANUAL PAIRING</span>
+          <div class="div-line"></div>
+        </div>
+
+        <div class="auth-input-group">
+          <label class="auth-label">PC SERVER URL</label>
+          <div class="auth-input-wrapper">
+            <i class="fa-solid fa-network-wired left-icon"></i>
+            <input id="serverUrlInput" class="auth-input" type="text" placeholder="http://192.168.1.100:8932" autocomplete="off" />
+          </div>
+        </div>
+
+        <div class="auth-input-group">
+          <label class="auth-label">PAIRING TOKEN</label>
+          <div class="auth-input-wrapper">
+            <i class="fa-solid fa-key left-icon"></i>
+            <input id="tokenInput" class="auth-input" type="text" placeholder="pair_tilux_xxxxxxxx" autocomplete="off" />
+          </div>
+        </div>
+
+        <button type="button" id="btnConnect" class="btn-auth-submit">
+          <span>Connect to PC</span> <i class="fa-solid fa-plug"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Mobile Application View -->
+    <div id="chatScreen" class="app-container hidden">
+      <!-- Main Content Area -->
+      <main class="main-content">
+        <!-- Top Bar -->
+        <header class="top-bar">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <button type="button" class="burger-btn" onclick="toggleDrawer()" title="Open System Dashboard">
+              <i class="fa-solid fa-bars"></i>
+            </button>
+          </div>
+          <div class="top-actions">
+            <div id="badge" class="connection-pill">
+              <span id="badgeDot" class="dot dot-off"></span>
+              <span id="badgeText">Disconnected</span>
+            </div>
+            <button type="button" class="btn-outline" onclick="clearChat()" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.3);" title="Clear Chat">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
+        </header>
+
+        <div class="chat-container">
+          <!-- Initial Orb View -->
+          <div id="initial-view" class="initial-view">
+            <div class="orb-container">
+              <div class="orb" id="the-orb"></div>
+            </div>
+            <h1 class="hero-text">Awaiting Command...</h1>
+            
+            <div class="action-pills">
+              <button type="button" class="pill" onclick="sendQuickAction('Play Music')"><i class="fa-solid fa-music"></i> Play Music</button>
+              <button type="button" class="pill" onclick="sendQuickAction('Web Search')"><i class="fa-solid fa-globe"></i> Web Search</button>
+              <button type="button" class="pill" onclick="sendQuickAction('Calculator')"><i class="fa-solid fa-calculator"></i> Calculator</button>
+            </div>
+          </div>
+
+          <!-- Chat History View -->
+          <div id="chat-history" class="chat-history hidden">
+            <!-- Messages injected dynamically -->
+          </div>
+
+          <!-- Scroll to Bottom Button -->
+          <button type="button" id="scrollToBottomBtn" class="scroll-bottom-btn hidden" onclick="scrollToBottom(event)" title="Scroll to Bottom">
+            <i class="fa-solid fa-arrow-down"></i>
+          </button>
+
+          <!-- Input Section -->
+          <div class="input-section" id="input-section">
+            <div id="attachment-preview-container" class="attachment-preview-container"></div>
+            <div class="input-box">
+              <div class="input-top">
+                <i class="fa-solid fa-sparkles spark-icon"></i>
+                <textarea id="chatInput" placeholder="Ask Tilux to control PC..." rows="1" autocomplete="off"></textarea>
+              </div>
+              <div class="input-bottom">
+                <div class="input-tools">
+                  <input type="file" multiple accept="image/*,.pdf,.doc,.docx,.txt" id="chat-attachment-input" style="display: none;">
+                  <div style="position: relative;">
+                    <button type="button" onclick="toggleAttachmentMenu()"><i class="fa-solid fa-plus"></i> Add</button>
+                    <div id="attachment-menu" class="attachment-menu" style="display: none;">
+                      <div class="attachment-option" onclick="triggerUpload('image/*')"><i class="fa-solid fa-image"></i> Images</div>
+                      <div class="attachment-option" onclick="triggerUpload('video/*')"><i class="fa-solid fa-video"></i> Videos</div>
+                      <div class="attachment-option" onclick="triggerUpload('.pdf,.doc,.docx,.txt,.csv')"><i class="fa-solid fa-file-lines"></i> Documents</div>
+                    </div>
+                  </div>
+                  <button type="button" onclick="killAudio()" style="color: #ef4444;"><i class="fa-solid fa-volume-xmark"></i> Stop Audio</button>
+                </div>
+                <div class="input-actions">
+                  <button type="button" id="mic-btn" class="mic-btn" title="Speak Command"><i class="fa-solid fa-microphone"></i></button>
+                  <button type="button" id="btnSend" class="send-btn"><i id="send-icon" class="fa-solid fa-arrow-up"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Hamburger Side Drawer Overlay -->
+    <div id="drawer-overlay" class="drawer-overlay" onclick="closeDrawerOnOverlay(event)">
+      <aside class="drawer-content">
+        <div class="sidebar-header">
+          <i class="fa-solid fa-circle-dot logo-icon" style="color: var(--accent);"></i>
+          <h2>Tilux</h2>
+          <button class="burger-btn" onclick="toggleDrawer()" style="width: 32px; height: 32px; font-size: 14px;">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        
+        <div class="sidebar-scrollable" style="flex: 1; overflow-y: auto;">
+          <button class="new-chat-btn" onclick="startNewChatMobile()">
+            <i class="fa-solid fa-plus"></i> New Chat
+          </button>
+          
+          <div class="nav-section">
+            <h3><i class="fa-solid fa-clock-rotate-left"></i> Chat History</h3>
+            <div id="mobile-history-list" class="history-list-container">
+              <div class="history-empty"><i class="fa-solid fa-spinner fa-spin"></i> Loading history...</div>
+            </div>
+          </div>
+
+          <div class="nav-section" style="margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+            <h3><i class="fa-solid fa-shield-halved" style="color: var(--accent);"></i> PC Sudo Vault</h3>
+            <div style="font-size: 11px; color: #a1a1aa; margin-bottom: 8px;">Allows Tilux to run privileged (root) commands remotely.</div>
+            <div style="position: relative; margin-bottom: 12px;">
+              <input type="password" id="mobile-sudo-pass-input" placeholder="Enter PC sudo password" onchange="saveMobileSudoPass()" style="width: 100%; padding: 8px 32px 8px 10px; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); border-radius: 6px; color: #fff; font-size: 12px;">
+              <button type="button" onclick="togglePassVisibility('mobile-sudo-pass-input', this)" style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #a1a1aa; font-size: 12px;">
+                <i class="fa-solid fa-eye"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="nav-section" style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 15px;">
+            <h3><i class="fa-solid fa-plug"></i> Connection Status</h3>
+            <div style="font-size: 12px; color: #a1a1aa; margin-bottom: 8px;"><b>Target PC:</b> <span id="drawer-pc-name">Tilux-PC</span></div>
+            <button class="btn-outline" onclick="disconnectRemote()" style="width: 100%; color: #ef4444; border-color: rgba(239, 68, 68, 0.4); font-size: 12px; padding: 8px;">
+              <i class="fa-solid fa-power-off"></i> Disconnect Remote
+            </button>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- QR Camera Scanner Modal -->
+    <div id="scannerModal" class="scanner-container hidden">
+      <video id="webcamVideo" class="absolute-fill" playsinline></video>
+      <canvas id="qrCanvas" class="hidden"></canvas>
+      <div class="scan-overlay">
+        <div class="scan-frame"></div>
+        <p class="scan-hint">Point at the QR code on your Tilux PC</p>
+        <button id="btnCancelScan" class="cancel-button">Cancel</button>
+      </div>
+    <!-- Image Lightbox Modal -->
+    <div id="imageLightbox" class="lightbox-modal hidden" onclick="closeLightbox(event)">
+      <div class="lightbox-toolbar" onclick="event.stopPropagation()">
+        <button id="lightboxDownloadBtn" class="lightbox-action-btn" onclick="downloadCurrentLightboxImage(event)">
+          <i class="fa-solid fa-download"></i> Save Image
+        </button>
+        <span class="lightbox-close" onclick="closeLightbox(event)">&times;</span>
+      </div>
+      <img id="lightboxImg" src="" alt="Enlarged Preview" onclick="event.stopPropagation()" />
+    </div>
+  </div>
+
+
+  <script src="script.js"></script>
+
+</body>
+</html>
