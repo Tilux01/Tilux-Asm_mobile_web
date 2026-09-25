@@ -35,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let videoStream = null;
   let animFrameId = null;
   let activeAiMessage = null;
+  var isCheckingFirebase = false;
 
   // Restore Saved Credentials & Active Chat State
   const savedUrl = localStorage.getItem('tilux_url');
@@ -61,6 +62,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Toast Helper with Anti-Spam & Deduplication
+  function showToast(msg, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    // Filter duplicate toasts
+    const existingSpans = container.querySelectorAll('.toast span');
+    for (let s of existingSpans) {
+      if (s.textContent === msg) return;
+    }
+
+    // Cap max visible toasts to prevent screen flooding
+    while (container.children.length >= 2) {
+      container.removeChild(container.firstChild);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    const icon = type === 'success' ? 'fa-circle-check' : (type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-info');
+    toast.innerHTML = `<i class="fa-solid ${icon}"></i><span>${msg}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, 3500);
+  }
+  window.showToast = showToast;
+
   // URL Normalizer
   function normalizeUrl(rawUrl) {
     let clean = (rawUrl || '').trim();
@@ -68,15 +96,13 @@ document.addEventListener('DOMContentLoaded', () => {
     let isHttps = clean.toLowerCase().startsWith('https://') || clean.toLowerCase().startsWith('wss://');
     clean = clean.replace(/^(wss?:\/\/|https?:\/\/)/i, '');
     clean = clean.replace(/\/+$/, '');
-    if (!clean.includes(':') && !clean.includes('ngrok') && !clean.includes('cloudflare') && !clean.includes('vercel') && !clean.includes('firebase')) {
+    if (!clean.includes(':') && !clean.includes('ngrok') && !clean.includes('cloudflare') && !clean.includes('vercel') && !clean.includes('firebase') && !clean.includes('loca.lt') && !clean.includes('localtunnel')) {
       clean = clean + ':8932';
     }
     return (isHttps ? 'https://' : 'http://') + clean;
   }
 
   // Firebase Dynamic URL Discovery fallback
-  // Firebase Dynamic URL Discovery fallback
-  let isCheckingFirebase = false;
   async function checkFirebaseForUpdatedUrl(token, attemptedUrl = '') {
     if (isCheckingFirebase) return null;
     isCheckingFirebase = true;
@@ -85,7 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const resp = await fetch('https://tiluxasm-default-rtdb.firebaseio.com/users/default_user/device.json');
       if (resp.ok) {
         const data = await resp.json();
-        const freshUrlRaw = data.public_url || data.ngrok_url || data.local_url;
+        const freshUrlRaw = data.tunnel_url || data.public_url || data.local_url;
         if (freshUrlRaw) {
           const freshUrl = normalizeUrl(freshUrlRaw);
           // If on HTTPS deployment, require HTTPS/WSS URL
@@ -119,33 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // Toast Helper with Anti-Spam & Deduplication
-  window.showToast = function(msg, type = 'info') {
-    const container = document.getElementById('toast-container');
-    if (!container) return;
 
-    // Filter duplicate toasts
-    const existingSpans = container.querySelectorAll('.toast span');
-    for (let s of existingSpans) {
-      if (s.textContent === msg) return;
-    }
-
-    // Cap max visible toasts to prevent screen flooding
-    while (container.children.length >= 2) {
-      container.removeChild(container.firstChild);
-    }
-
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    let iconClass = type === 'error' ? 'fa-circle-xmark' : (type === 'success' ? 'fa-circle-check' : 'fa-circle-info');
-    toast.innerHTML = `<i class="fa-solid ${iconClass}"></i> <span>${msg}</span>`;
-    container.appendChild(toast);
-
-    setTimeout(() => {
-      toast.classList.add('fade-out');
-      setTimeout(() => toast.remove(), 400);
-    }, 3500);
-  };
 
   function resetConnectBtn() {
     const btn = document.getElementById('btnConnect');
@@ -156,26 +156,20 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function connectSocket(url, connToken) {
-    const targetUrl = normalizeUrl(url);
+    let targetUrl = normalizeUrl(url);
     if (!targetUrl || !connToken) {
-      showToast('Please enter PC Server URL and Pairing Token', 'error');
+      showToast('Please enter PC Pairing Token', 'error');
       resetConnectBtn();
       return;
     }
 
-    // Handle HTTPS Deployment Mixed Content Protection
-    if (window.location.protocol === 'https:' && targetUrl.startsWith('http://')) {
-      console.warn('[Remote] Mixed Content Protection: HTTPS deployment cannot connect directly to HTTP LAN URL.');
-      showToast('HTTPS deployment detected. Connecting via Firebase Cloud Bridge...', 'info');
+    // Fetch latest tunnel URL from Firebase Realtime DB registry
+    if (!targetUrl.startsWith('https://') && !targetUrl.includes('loca.lt') && !targetUrl.includes('ngrok')) {
+      console.log('[Remote] Looking up live PC tunnel URL from Firebase...');
+      showToast('Discovering PC live tunnel...', 'info');
       const secureTunnelUrl = await checkFirebaseForUpdatedUrl(connToken, targetUrl);
-      if (secureTunnelUrl && secureTunnelUrl.startsWith('https://')) {
-        showToast('Connected via secure live tunnel!', 'success');
-        connectSocket(secureTunnelUrl, connToken);
-        return;
-      } else {
-        // Activate Firebase Cloud Bridge Mode seamlessly
-        activateFirebaseBridge(connToken);
-        return;
+      if (secureTunnelUrl && (secureTunnelUrl.startsWith('https://') || secureTunnelUrl.includes('loca.lt'))) {
+        targetUrl = secureTunnelUrl;
       }
     }
 
@@ -188,18 +182,17 @@ document.addEventListener('DOMContentLoaded', () => {
       socket.disconnect();
     }
 
-    console.log('[Remote] Connecting socket to:', targetUrl);
     serverUrlInput.value = targetUrl;
     currentToken = connToken;
 
-    updateBadge('Connecting...', false);
+    updateBadge('Connecting via Tunnel...', false);
 
     socket = io(targetUrl, {
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: 3,
+      reconnectionAttempts: 5,
       reconnectionDelay: 1500,
-      reconnectionDelayMax: 4000,
+      reconnectionDelayMax: 5000,
       timeout: 10000
     });
 
@@ -214,21 +207,16 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('connect_error', async (err) => {
       console.error('[Remote] Socket Error:', err);
       connectErrCount++;
-      if (connectErrCount === 1) {
-        showToast('Connecting to PC...', 'info');
-        const fallbackUrl = await checkFirebaseForUpdatedUrl(connToken, targetUrl);
-        if (fallbackUrl && fallbackUrl !== targetUrl) {
-          showToast('Connecting via live remote tunnel from Firebase...', 'info');
-          if (socket) socket.disconnect();
-          connectSocket(fallbackUrl, connToken);
-          return;
-        }
-      }
       if (connectErrCount >= 2) {
-        if (socket) socket.disconnect();
-        showToast('Connection failed. Verify PC server is running & pairing token is correct.', 'error');
-        updateBadge('Connection Failed', false);
-        resetConnectBtn();
+        // Retry checking Firebase RTDB for a fresh localtunnel URL
+        const freshUrl = await checkFirebaseForUpdatedUrl(connToken, targetUrl);
+        if (freshUrl && freshUrl !== targetUrl) {
+          if (socket) socket.disconnect();
+          connectSocket(freshUrl, connToken);
+        } else {
+          updateBadge('Tunnel Disconnected', false);
+          resetConnectBtn();
+        }
       }
     });
 
@@ -826,8 +814,9 @@ document.addEventListener('DOMContentLoaded', () => {
     activeAiMessage = createAiMessage(loadingId);
     toggleSendIcon(true);
 
-    if (isFirebaseCloudBridge || !socket || !socket.connected) {
-      sendFirebaseCloudCommand(text, loadingId);
+    if (!socket || !socket.connected) {
+      showToast('Socket disconnected. Reconnecting to tunnel...', 'error');
+      toggleSendIcon(false);
       return;
     }
 
@@ -840,73 +829,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  let isFirebaseCloudBridge = false;
-
-  function activateFirebaseBridge(token, pcName = 'Tilux-PC') {
-    isFirebaseCloudBridge = true;
-    isPaired = true;
-    currentToken = token;
-    resetConnectBtn();
-    
-    updateBadge(`Connected: ${pcName} (Cloud Bridge)`, true);
-    if (document.getElementById('remote-pc-name')) document.getElementById('remote-pc-name').textContent = `${pcName} (Cloud Bridge)`;
-    if (document.getElementById('drawer-pc-name')) document.getElementById('drawer-pc-name').textContent = `${pcName} (Cloud Bridge)`;
-
-    localStorage.setItem('tilux_mode', 'firebase');
-    localStorage.setItem('tilux_token', token);
-
-    pairScreen.classList.add('hidden');
-    chatScreen.classList.remove('hidden');
-    showToast(`Connected to ${pcName} via Firebase Cloud Bridge!`, 'success');
-  }
-
-  async function sendFirebaseCloudCommand(text, loadingId) {
-    try {
-      const cmdId = 'cmd_' + Date.now();
-      const cmdUrl = `https://tiluxasm-default-rtdb.firebaseio.com/users/default_user/commands/${cmdId}.json`;
-      await fetch(cmdUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: text, status: 'pending', timestamp: Date.now() })
-      });
-      
-      const respUrl = `https://tiluxasm-default-rtdb.firebaseio.com/users/default_user/responses/${cmdId}.json`;
-      let attempts = 0;
-      const pollResp = setInterval(async () => {
-        attempts++;
-        try {
-          const r = await fetch(respUrl);
-          if (r.ok) {
-            const resData = await r.json();
-            if (resData && resData.status === 'completed') {
-              clearInterval(pollResp);
-              if (activeAiMessage) {
-                activeAiMessage.setReply(resData.reply);
-                speakOnMobile(resData.reply);
-                activeAiMessage = null;
-              } else {
-                addMessage('AI', formatMarkdownAndProxyImages(resData.reply));
-                speakOnMobile(resData.reply);
-              }
-              toggleSendIcon(false);
-            }
-          }
-        } catch(err) {}
-
-        if (attempts >= 60) {
-          clearInterval(pollResp);
-          if (activeAiMessage) {
-            activeAiMessage.setReply('PC response timed out.');
-            activeAiMessage = null;
-          }
-          toggleSendIcon(false);
-        }
-      }, 1500);
-    } catch(e) {
-      showToast('Failed to post command to Firebase Cloud Bridge', 'error');
-      toggleSendIcon(false);
-    }
-  }
 
   if (inputField) {
     inputField.addEventListener('input', () => {
@@ -919,7 +841,9 @@ document.addEventListener('DOMContentLoaded', () => {
   async function fetchSettingsForMobile(serverUrl) {
     if (!serverUrl) return;
     try {
-      const resp = await fetch(`${serverUrl}/api/settings`);
+      const resp = await fetch(`${serverUrl}/api/settings`, {
+        headers: { 'bypass-tunnel-reminder': 'true' }
+      });
       if (resp.ok) {
         const data = await resp.json();
         if (data) {
@@ -1202,7 +1126,9 @@ document.addEventListener('DOMContentLoaded', () => {
   window.loadMobileSudoPass = async function() {
     if (!currentUrl) return;
     try {
-      const res = await fetch(`${currentUrl}/api/settings`);
+      const res = await fetch(`${currentUrl}/api/settings`, {
+        headers: { 'bypass-tunnel-reminder': 'true' }
+      });
       const data = await res.json();
       const input = document.getElementById('mobile-sudo-pass-input');
       if (input && data.sudo_password) {
@@ -1216,13 +1142,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const input = document.getElementById('mobile-sudo-pass-input');
     if (!input) return;
     try {
-      const getRes = await fetch(`${currentUrl}/api/settings`);
+      const getRes = await fetch(`${currentUrl}/api/settings`, {
+        headers: { 'bypass-tunnel-reminder': 'true' }
+      });
       const currentSettings = await getRes.json();
       currentSettings.sudo_password = input.value;
 
       await fetch(`${currentUrl}/api/settings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'bypass-tunnel-reminder': 'true'
+        },
         body: JSON.stringify(currentSettings)
       });
       showToast('Sudo Vault password saved!', 'success');
