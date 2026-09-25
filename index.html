@@ -21,44 +21,50 @@
   <div id="root" class="root">
     <!-- Unpaired Connection Screen -->
     <div id="pairScreen" class="pair-screen">
-      <div class="auth-card">
+      <div class="bg-gradient-circle"></div>
+      
+      <div class="auth-container">
         <div class="auth-header">
-          <div class="auth-orb-glow">
-            <div class="mini-orb"></div>
+          <h1 class="auth-title">Connect</h1>
+          <p class="auth-subtitle">Need pair details? <span id="btnScan" class="purple-link">scan QR code</span></p>
+        </div>
+
+        <div class="auth-form">
+          <div class="auth-input-group">
+            <div class="auth-input-wrapper">
+              <input id="serverUrlInput" class="auth-input" type="text" placeholder="PC Server URL (e.g. http://192.168.1.100:8932)" autocomplete="off" />
+            </div>
           </div>
-          <h2 class="auth-title">Connect to Tilux PC</h2>
-          <p class="auth-subtitle">Scan the QR code displayed on your PC screen or enter connection keys manually.</p>
-        </div>
 
-        <button type="button" id="btnScan" class="btn-auth-scan">
-          <i class="fa-solid fa-qrcode"></i> <span>Scan QR Code</span>
-        </button>
-
-        <div class="divider">
-          <div class="div-line"></div>
-          <span class="div-text">OR ENTER MANUAL CREDENTIALS</span>
-          <div class="div-line"></div>
-        </div>
-
-        <div class="auth-input-group">
-          <label class="auth-label">PC SERVER URL</label>
-          <div class="auth-input-wrapper">
-            <i class="fa-solid fa-server left-icon"></i>
-            <input id="serverUrlInput" class="auth-input" type="text" placeholder="http://192.168.1.100:8932" autocomplete="off" />
+          <div class="auth-input-group">
+            <div class="auth-input-wrapper">
+              <i class="fa-solid fa-lock left-icon"></i>
+              <input id="tokenInput" class="auth-input" type="text" placeholder="Pairing Token" autocomplete="off" />
+              <button type="button" id="btnScanToken" class="right-link-btn">SCAN</button>
+            </div>
           </div>
-        </div>
 
-        <div class="auth-input-group">
-          <label class="auth-label">PAIRING TOKEN</label>
-          <div class="auth-input-wrapper">
-            <i class="fa-solid fa-shield-halved left-icon"></i>
-            <input id="tokenInput" class="auth-input" type="text" placeholder="pair_tilux_xxxxxxxx" autocomplete="off" />
+          <div class="auth-action-row">
+            <button type="button" id="btnConnect" class="btn-auth-submit">
+              <span>Connect</span> <span class="icon-badge"><i class="fa-solid fa-arrow-right-to-bracket"></i></span>
+            </button>
           </div>
         </div>
 
-        <button type="button" id="btnConnect" class="btn-auth-submit">
-          <span>Connect to PC</span> <i class="fa-solid fa-arrow-right-to-bracket"></i>
-        </button>
+        <div class="auth-social-row">
+          <button type="button" id="btnCircleQR" class="social-circle-btn" title="Scan QR Code">
+            <i class="fa-solid fa-qrcode"></i>
+          </button>
+          <button type="button" onclick="checkFirebaseForUpdatedUrl()" class="social-circle-btn" title="Firebase Live Tunnel">
+            <i class="fa-solid fa-bolt"></i>
+          </button>
+          <button type="button" onclick="showToast('Searching local network...', 'info')" class="social-circle-btn" title="LAN Discovery">
+            <i class="fa-solid fa-network-wired"></i>
+          </button>
+          <button type="button" onclick="toggleDrawer()" class="social-circle-btn" title="System Settings">
+            <i class="fa-solid fa-gear"></i>
+          </button>
+        </div>
       </div>
     </div>
 

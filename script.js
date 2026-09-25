@@ -212,6 +212,7 @@ document.addEventListener('DOMContentLoaded', () => {
         pairScreen.classList.add('hidden');
         
         socket.emit('get_history');
+        fetchSettingsForMobile(targetUrl);
 
         if (!hasShownConnectedToast) {
           hasShownConnectedToast = true;
@@ -803,20 +804,72 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  let activeRemoteSettings = { tts_enabled: true, tts_voice: 'en-US-AriaNeural' };
+  async function fetchSettingsForMobile(serverUrl) {
+    if (!serverUrl) return;
+    try {
+      const resp = await fetch(`${serverUrl}/api/settings`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data) {
+          activeRemoteSettings = data;
+          if (data.tts_voice) localStorage.setItem('tilux_tts_voice', data.tts_voice);
+          if (data.tts_enabled !== undefined) localStorage.setItem('tilux_tts_enabled', data.tts_enabled ? 'true' : 'false');
+        }
+      }
+    } catch(e) {}
+  }
+
   function speakOnMobile(text) {
     if (!('speechSynthesis' in window) || !text) return;
+    const isEnabled = activeRemoteSettings.tts_enabled !== false && localStorage.getItem('tilux_tts_enabled') !== 'false';
+    if (!isEnabled) return;
+
     try {
       window.speechSynthesis.cancel();
       window.speechSynthesis.resume();
-      const cleanText = text.replace(/[*_~`#\-]/g, '').slice(0, 300);
+
+      // Clean markdown, image tags, code blocks, URLs, and file paths
+      let cleanText = text
+        .replace(/!\[.*?\]\(.*?\)/g, '')
+        .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+        .replace(/```[\s\S]*?```/g, '')
+        .replace(/`[^`]+`/g, '')
+        .replace(/https?:\/\/[^\s]+/g, '')
+        .replace(/\/[\w.\/-]+/g, '')
+        .replace(/[*_~`#>\-]/g, '')
+        .trim();
+
+      if (!cleanText) return;
+      cleanText = cleanText.slice(0, 350);
+
       const utterance = new SpeechSynthesisUtterance(cleanText);
+      
+      // Sync configured TTS Voice / Language from Settings (e.g., 'fr-FR-DenoisNeural' -> 'fr-FR', 'es-ES-...' -> 'es-ES')
+      const targetVoiceStr = activeRemoteSettings.tts_voice || localStorage.getItem('tilux_tts_voice') || 'en-US-AriaNeural';
+      let langPrefix = 'en-US';
+      const parts = targetVoiceStr.split('-');
+      if (parts.length >= 2) {
+        langPrefix = `${parts[0]}-${parts[1]}`;
+      }
+
+      utterance.lang = langPrefix;
       utterance.rate = 1.0;
       utterance.pitch = 1.0;
-      
-      const voices = window.speechSynthesis.getVoices();
-      if (voices && voices.length > 0) {
-        const selectedVoice = voices.find(v => v.lang.startsWith('en') || v.default) || voices[0];
-        if (selectedVoice) utterance.voice = selectedVoice;
+
+      const voices = window.speechSynthesis.getVoices() || [];
+      if (voices.length > 0) {
+        const targetLangLower = langPrefix.toLowerCase().replace('_', '-');
+        const shortLang = targetLangLower.split('-')[0];
+        
+        const matchedVoice = voices.find(v => v.lang && v.lang.toLowerCase().replace('_', '-').startsWith(targetLangLower)) ||
+                             voices.find(v => v.lang && v.lang.toLowerCase().startsWith(shortLang)) ||
+                             voices.find(v => v.name && v.name.toLowerCase().includes(shortLang));
+                             
+        if (matchedVoice) {
+          utterance.voice = matchedVoice;
+          if (matchedVoice.lang) utterance.lang = matchedVoice.lang;
+        }
       }
 
       window.speechSynthesis.speak(utterance);
@@ -942,7 +995,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // QR Scanner Logic
-  btnScan.addEventListener('click', async () => {
+  const triggerScan = async () => {
     try {
       videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       webcamVideo.srcObject = videoStream;
@@ -950,9 +1003,15 @@ document.addEventListener('DOMContentLoaded', () => {
       scannerModal.classList.remove('hidden');
       requestAnimationFrame(scanFrame);
     } catch (e) {
-      showToast('Browsers require HTTPS for camera. Please enter URL/Token manually below.', 'error');
+      showToast('Browsers require HTTPS for camera scanner. Please enter URL/Token manually.', 'error');
     }
-  });
+  };
+
+  if (btnScan) btnScan.addEventListener('click', triggerScan);
+  const btnScanToken = document.getElementById('btnScanToken');
+  if (btnScanToken) btnScanToken.addEventListener('click', triggerScan);
+  const btnCircleQR = document.getElementById('btnCircleQR');
+  if (btnCircleQR) btnCircleQR.addEventListener('click', triggerScan);
 
   function closeScanner() {
     if (videoStream) {
