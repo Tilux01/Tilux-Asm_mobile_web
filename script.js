@@ -166,15 +166,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // Handle HTTPS Deployment Mixed Content Protection
     if (window.location.protocol === 'https:' && targetUrl.startsWith('http://')) {
       console.warn('[Remote] Mixed Content Protection: HTTPS deployment cannot connect directly to HTTP LAN URL.');
-      showToast('HTTPS deployment detected. Looking up secure remote tunnel...', 'info');
+      showToast('HTTPS deployment detected. Connecting via Firebase Cloud Bridge...', 'info');
       const secureTunnelUrl = await checkFirebaseForUpdatedUrl(connToken, targetUrl);
       if (secureTunnelUrl && secureTunnelUrl.startsWith('https://')) {
-        showToast('Connected via secure live tunnel from Firebase!', 'success');
+        showToast('Connected via secure live tunnel!', 'success');
         connectSocket(secureTunnelUrl, connToken);
         return;
       } else {
-        showToast('HTTPS Mixed Content: Please use an HTTPS tunnel (Ngrok) or access over HTTP on LAN.', 'error');
-        resetConnectBtn();
+        // Activate Firebase Cloud Bridge Mode seamlessly
+        activateFirebaseBridge(connToken);
         return;
       }
     }
@@ -826,6 +826,11 @@ document.addEventListener('DOMContentLoaded', () => {
     activeAiMessage = createAiMessage(loadingId);
     toggleSendIcon(true);
 
+    if (isFirebaseCloudBridge || !socket || !socket.connected) {
+      sendFirebaseCloudCommand(text, loadingId);
+      return;
+    }
+
     socket.emit('send_prompt', {
       text: text,
       attachments: rawAttachments,
@@ -833,6 +838,74 @@ document.addEventListener('DOMContentLoaded', () => {
       loadingId: loadingId,
       session_id: currentSessionId
     });
+  }
+
+  let isFirebaseCloudBridge = false;
+
+  function activateFirebaseBridge(token, pcName = 'Tilux-PC') {
+    isFirebaseCloudBridge = true;
+    isPaired = true;
+    currentToken = token;
+    resetConnectBtn();
+    
+    updateBadge(`Connected: ${pcName} (Cloud Bridge)`, true);
+    if (document.getElementById('remote-pc-name')) document.getElementById('remote-pc-name').textContent = `${pcName} (Cloud Bridge)`;
+    if (document.getElementById('drawer-pc-name')) document.getElementById('drawer-pc-name').textContent = `${pcName} (Cloud Bridge)`;
+
+    localStorage.setItem('tilux_mode', 'firebase');
+    localStorage.setItem('tilux_token', token);
+
+    pairScreen.classList.add('hidden');
+    chatScreen.classList.remove('hidden');
+    showToast(`Connected to ${pcName} via Firebase Cloud Bridge!`, 'success');
+  }
+
+  async function sendFirebaseCloudCommand(text, loadingId) {
+    try {
+      const cmdId = 'cmd_' + Date.now();
+      const cmdUrl = `https://tiluxasm-default-rtdb.firebaseio.com/users/default_user/commands/${cmdId}.json`;
+      await fetch(cmdUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: text, status: 'pending', timestamp: Date.now() })
+      });
+      
+      const respUrl = `https://tiluxasm-default-rtdb.firebaseio.com/users/default_user/responses/${cmdId}.json`;
+      let attempts = 0;
+      const pollResp = setInterval(async () => {
+        attempts++;
+        try {
+          const r = await fetch(respUrl);
+          if (r.ok) {
+            const resData = await r.json();
+            if (resData && resData.status === 'completed') {
+              clearInterval(pollResp);
+              if (activeAiMessage) {
+                activeAiMessage.setReply(resData.reply);
+                speakOnMobile(resData.reply);
+                activeAiMessage = null;
+              } else {
+                addMessage('AI', formatMarkdownAndProxyImages(resData.reply));
+                speakOnMobile(resData.reply);
+              }
+              toggleSendIcon(false);
+            }
+          }
+        } catch(err) {}
+
+        if (attempts >= 60) {
+          clearInterval(pollResp);
+          if (activeAiMessage) {
+            activeAiMessage.setReply('PC response timed out.');
+            activeAiMessage = null;
+          }
+          toggleSendIcon(false);
+        }
+      }, 1500);
+    } catch(e) {
+      showToast('Failed to post command to Firebase Cloud Bridge', 'error');
+      toggleSendIcon(false);
+    }
   }
 
   if (inputField) {

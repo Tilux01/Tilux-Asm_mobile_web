@@ -913,16 +913,7 @@ body {
 }
 
 .bg-gradient-circle {
-    position: absolute;
-    top: -140px;
-    right: -140px;
-    width: 440px;
-    height: 440px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 40% 40%, #5b21b6 0%, #3b0764 60%, transparent 100%);
-    opacity: 0.9;
-    pointer-events: none;
-    z-index: 1;
+    display: none !important;
 }
 
 .auth-container {
