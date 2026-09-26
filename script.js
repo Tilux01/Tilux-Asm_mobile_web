@@ -38,9 +38,16 @@ document.addEventListener('DOMContentLoaded', () => {
   var isCheckingFirebase = false;
 
   // Restore Saved Credentials & Active Chat State
-  const savedUrl = localStorage.getItem('tilux_url');
-  const savedToken = localStorage.getItem('tilux_token');
+  let savedUrl = localStorage.getItem('tilux_url');
+  let savedToken = localStorage.getItem('tilux_token');
   const savedChatHtml = sessionStorage.getItem('tilux_chat_html');
+
+  // Purge legacy localtunnel URLs from localStorage
+  if (savedUrl && savedUrl.includes('loca.lt')) {
+    console.warn('[Remote] Purging legacy localtunnel URL from storage:', savedUrl);
+    localStorage.removeItem('tilux_url');
+    savedUrl = null;
+  }
 
   if (savedUrl) serverUrlInput.value = savedUrl;
   if (savedToken) tokenInput.value = savedToken;
@@ -185,8 +192,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let targetUrl = rawInput;
 
+    // Purge obsolete loca.lt URLs
+    if (targetUrl.includes('loca.lt')) {
+      console.warn('[Remote] Purging obsolete loca.lt domain:', targetUrl);
+      localStorage.removeItem('tilux_url');
+      targetUrl = '';
+    }
+
     // Check if input is a Host ID or requires Firebase lookup
-    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://') && !targetUrl.includes('trycloudflare') && !targetUrl.includes('ngrok')) {
+    if (!targetUrl || (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://') && !targetUrl.includes('trycloudflare') && !targetUrl.includes('ngrok'))) {
       console.log('[Remote] Looking up Host ID from Firebase:', rawInput);
       showToast('Connecting to Host...', 'info');
       const resolved = await checkFirebaseForUpdatedUrl(rawInput, pairToken);
@@ -224,7 +238,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateBadge('Connecting via Tunnel...', false);
 
     socket = io(targetUrl, {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1500,
@@ -244,11 +258,11 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('[Remote] Socket Error:', err);
       connectErrCount++;
       if (connectErrCount >= 2) {
-        // Retry checking Firebase RTDB for a fresh tunnel URL
-        const freshUrl = await checkFirebaseForUpdatedUrl(connToken, targetUrl);
-        if (freshUrl && freshUrl !== targetUrl) {
+        // Retry checking Firebase RTDB for a fresh tunnel URL using rawInput (Host ID)
+        const freshUrl = await checkFirebaseForUpdatedUrl(rawInput, connToken, targetUrl);
+        if (freshUrl && typeof freshUrl === 'string' && freshUrl !== targetUrl) {
           if (socket) socket.disconnect();
-          connectSocket(freshUrl, connToken);
+          connectSocket(rawInput, connToken);
         } else {
           updateBadge('Tunnel Disconnected', false);
           resetConnectBtn();
