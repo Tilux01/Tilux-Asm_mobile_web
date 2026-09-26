@@ -96,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let isHttps = clean.toLowerCase().startsWith('https://') || clean.toLowerCase().startsWith('wss://');
     clean = clean.replace(/^(wss?:\/\/|https?:\/\/)/i, '');
     clean = clean.replace(/\/+$/, '');
-    if (!clean.includes(':') && !clean.includes('ngrok') && !clean.includes('cloudflare') && !clean.includes('vercel') && !clean.includes('firebase') && !clean.includes('loca.lt') && !clean.includes('localtunnel')) {
+    if (!clean.includes(':') && !clean.includes('ngrok') && !clean.includes('cloudflare') && !clean.includes('trycloudflare') && !clean.includes('vercel') && !clean.includes('firebase')) {
       clean = clean + ':8932';
     }
     return (isHttps ? 'https://' : 'http://') + clean;
@@ -186,7 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let targetUrl = rawInput;
 
     // Check if input is a Host ID or requires Firebase lookup
-    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://') && !targetUrl.includes('loca.lt') && !targetUrl.includes('ngrok')) {
+    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://') && !targetUrl.includes('trycloudflare') && !targetUrl.includes('ngrok')) {
       console.log('[Remote] Looking up Host ID from Firebase:', rawInput);
       showToast('Connecting to Host...', 'info');
       const resolved = await checkFirebaseForUpdatedUrl(rawInput, pairToken);
@@ -244,7 +244,7 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('[Remote] Socket Error:', err);
       connectErrCount++;
       if (connectErrCount >= 2) {
-        // Retry checking Firebase RTDB for a fresh localtunnel URL
+        // Retry checking Firebase RTDB for a fresh tunnel URL
         const freshUrl = await checkFirebaseForUpdatedUrl(connToken, targetUrl);
         if (freshUrl && freshUrl !== targetUrl) {
           if (socket) socket.disconnect();
@@ -332,6 +332,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Final AI Output Reply
     socket.on('agent_reply', (data) => {
       if (data) {
+        if (data.session_id) {
+          currentSessionId = data.session_id;
+        }
         if (activeAiMessage) {
           if (data.events) {
             activeAiMessage.updateEvents(data.events);
@@ -464,7 +467,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.downloadImage = function(url, filename = 'tilux_image.png') {
     showToast('Downloading media file...', 'info');
-    fetch(url)
+    fetch(url, {
+      headers: { 'bypass-tunnel-reminder': 'true' }
+    })
       .then(resp => {
         if (!resp.ok) throw new Error('Fetch failed');
         return resp.blob();
@@ -473,7 +478,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = blobUrl;
-        a.download = filename || 'tilux_image.png';
+        a.download = filename || ('tilux_media_' + Date.now() + '.png');
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -481,9 +486,8 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Media downloaded to phone', 'success');
       })
       .catch(err => {
-        console.warn('Direct blob download failed, opening direct stream:', err);
-        const dlUrl = url.includes('?') ? (url + '&download=1') : (url + '?download=1');
-        window.open(dlUrl, '_blank');
+        console.error('Blob download failed:', err);
+        showToast('Download failed. Ensure PC server is online.', 'error');
       });
   };
 
@@ -513,7 +517,7 @@ document.addEventListener('DOMContentLoaded', () => {
       let finalSrc = p1;
       if (!p1.startsWith('http://') && !p1.startsWith('https://') && !p1.startsWith('data:')) {
         const cleanPath = p1.replace(/^file:\/\//, '');
-        finalSrc = `${hostPrefix}/api/file?path=${encodeURIComponent(cleanPath)}`;
+        finalSrc = `${hostPrefix}/api/file?path=${encodeURIComponent(cleanPath)}&bypass-tunnel-reminder=true`;
       }
       return `src="${finalSrc}" onclick="openLightbox('${finalSrc}')" class="chat-img-preview"`;
     });
@@ -523,9 +527,9 @@ document.addEventListener('DOMContentLoaded', () => {
       let finalHref = p1;
       if (!p1.startsWith('http://') && !p1.startsWith('https://') && !p1.startsWith('data:')) {
         const cleanPath = p1.replace(/^file:\/\//, '');
-        finalHref = `${hostPrefix}/api/file?path=${encodeURIComponent(cleanPath)}&download=1`;
+        finalHref = `${hostPrefix}/api/file?path=${encodeURIComponent(cleanPath)}&download=1&bypass-tunnel-reminder=true`;
       }
-      return `href="${finalHref}" target="_blank" download`;
+      return `href="${finalHref}" onclick="event.preventDefault(); downloadImage('${finalHref}')"`;
     });
 
     // 3. Wrap images in chat-img-wrapper with a Save badge button
@@ -984,7 +988,17 @@ document.addEventListener('DOMContentLoaded', () => {
       container.innerHTML = '<div class="history-empty"><i class="fa-solid fa-comments"></i> No past conversations yet</div>';
       return;
     }
+
+    const seen = new Set();
+    const uniqueSessions = [];
     sessions.forEach(s => {
+      if (s && s.id && !seen.has(s.id)) {
+        seen.add(s.id);
+        uniqueSessions.push(s);
+      }
+    });
+
+    uniqueSessions.forEach(s => {
       const item = document.createElement('div');
       item.className = `history-item${s.id === currentSessionId ? ' active' : ''}`;
       item.onclick = () => loadHistorySessionMobile(s.id);
