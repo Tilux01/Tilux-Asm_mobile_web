@@ -109,8 +109,71 @@ document.addEventListener('DOMContentLoaded', () => {
     return (isHttps ? 'https://' : 'http://') + clean;
   }
 
+  // Realtime Firebase RTDB Host Listener via Native EventSource (SSE)
+  let firebaseEventSource = null;
+  let lastWakeToken = null;
+
+  function subscribeToFirebaseHostEvents(hostId) {
+    if (!hostId || typeof EventSource === 'undefined') return;
+    const cleanHostId = hostId.trim();
+    if (!cleanHostId.startsWith('tilux_host_') && cleanHostId.includes('.')) return;
+
+    if (firebaseEventSource) {
+      try { firebaseEventSource.close(); } catch(e) {}
+      firebaseEventSource = null;
+    }
+
+    const sseUrl = `https://tiluxasm-default-rtdb.firebaseio.com/hosts/${cleanHostId}.json`;
+    console.log('[Realtime Firebase] Subscribing to EventSource stream for Host:', cleanHostId);
+
+    try {
+      firebaseEventSource = new EventSource(sseUrl);
+
+      const handleFirebaseData = (rawData) => {
+        try {
+          const payload = JSON.parse(rawData);
+          const data = payload && payload.data ? payload.data : payload;
+          if (!data || typeof data !== 'object') return;
+
+          console.log('[Realtime Firebase] Realtime update pushed from host:', data);
+
+          const freshWakeToken = data.wake_token ? data.wake_token.trim() : '';
+          const freshUrlRaw = data.tunnel_url || data.public_url || data.local_url;
+
+          let isServerWokenUp = false;
+          if (freshWakeToken) {
+            if (lastWakeToken !== null && freshWakeToken !== lastWakeToken) {
+              console.log('[Realtime Firebase] ⚡ Wake token changed (' + lastWakeToken + ' -> ' + freshWakeToken + '). Server has woken up/rebooted!');
+              isServerWokenUp = true;
+            }
+            lastWakeToken = freshWakeToken;
+          }
+
+          if (freshUrlRaw) {
+            const freshUrl = normalizeUrl(freshUrlRaw);
+            if (freshUrl && (isServerWokenUp || !socket || !socket.connected)) {
+              console.log('[Realtime Firebase] Reconnecting socket to woke/live host:', freshUrl);
+              connectSocket(cleanHostId, currentToken);
+            }
+          }
+        } catch (err) {
+          console.warn('[Realtime Firebase Parse Warning]', err);
+        }
+      };
+
+      firebaseEventSource.addEventListener('put', (e) => handleFirebaseData(e.data));
+      firebaseEventSource.addEventListener('patch', (e) => handleFirebaseData(e.data));
+
+      firebaseEventSource.onerror = () => {
+        console.warn('[Realtime Firebase] EventSource reconnecting...');
+      };
+    } catch(err) {
+      console.warn('[Realtime Firebase EventSource Setup Error]', err);
+    }
+  }
+
   // Firebase Host Discovery & Connection Resolution
-  async function checkFirebaseForUpdatedUrl(hostIdInput = '', tokenInput = '', attemptedUrl = '') {
+  async function checkFirebaseForUpdatedUrl(hostIdInput = '', tokenInputParam = '', attemptedUrl = '') {
     if (isCheckingFirebase) return null;
     isCheckingFirebase = true;
     try {
@@ -119,6 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
       
       if (targetHost && (targetHost.startsWith('tilux_host_') || !targetHost.includes('.'))) {
         fetchUrl = `https://tiluxasm-default-rtdb.firebaseio.com/hosts/${targetHost}.json`;
+        subscribeToFirebaseHostEvents(targetHost);
       }
 
       console.log('[Remote] Looking up Host state from Firebase:', fetchUrl);
@@ -132,11 +196,15 @@ document.addEventListener('DOMContentLoaded', () => {
           return null;
         }
 
-        // Validate Pair Token if host node has pair_token set
-        if (tokenInput && data.pair_token && data.pair_token.trim() !== tokenInput.trim()) {
-          console.warn('[Remote] Pair token mismatch for Host:', targetHost);
-          showToast('Invalid Pair Token for this Host ID', 'error');
-          return { error: 'Invalid Pair Token for this Host ID' };
+        // Auto-adopt live Pair Token from Firebase RTDB for Host ID lookup
+        if (data.pair_token && data.pair_token.trim()) {
+          const freshToken = data.pair_token.trim();
+          if (freshToken !== currentToken) {
+            console.log('[Remote] Auto-adopting updated pair token from Firebase RTDB:', freshToken);
+            currentToken = freshToken;
+            if (tokenInput) tokenInput.value = freshToken;
+            localStorage.setItem('tilux_token', freshToken);
+          }
         }
 
         const freshUrlRaw = data.tunnel_url || data.public_url || data.local_url;
@@ -240,33 +308,41 @@ document.addEventListener('DOMContentLoaded', () => {
     socket = io(targetUrl, {
       transports: ['polling', 'websocket'],
       reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1500,
-      reconnectionDelayMax: 5000,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 4000,
       timeout: 10000
     });
 
     let connectErrCount = 0;
+    let reconnectCheckTimer = null;
 
     socket.on('connect', () => {
       connectErrCount = 0;
+      if (reconnectCheckTimer) {
+        clearInterval(reconnectCheckTimer);
+        reconnectCheckTimer = null;
+      }
       updateBadge('Authenticating...', false);
       socket.emit('pair_device', { token: connToken });
     });
 
-    socket.on('connect_error', async (err) => {
+    socket.on('connect_error', (err) => {
       console.error('[Remote] Socket Error:', err);
       connectErrCount++;
-      if (connectErrCount >= 2) {
-        // Retry checking Firebase RTDB for a fresh tunnel URL using rawInput (Host ID)
-        const freshUrl = await checkFirebaseForUpdatedUrl(rawInput, connToken, targetUrl);
-        if (freshUrl && typeof freshUrl === 'string' && freshUrl !== targetUrl) {
-          if (socket) socket.disconnect();
-          connectSocket(rawInput, connToken);
-        } else {
-          updateBadge('Tunnel Disconnected', false);
-          resetConnectBtn();
-        }
+      updateBadge('Reconnecting...', false);
+
+      // Periodically check Firebase RTDB in case tunnel URL changed or host rebooted
+      if (!reconnectCheckTimer && rawInput) {
+        reconnectCheckTimer = setInterval(async () => {
+          const freshUrl = await checkFirebaseForUpdatedUrl(rawInput, connToken, targetUrl);
+          if (freshUrl && typeof freshUrl === 'string' && freshUrl !== targetUrl) {
+            clearInterval(reconnectCheckTimer);
+            reconnectCheckTimer = null;
+            if (socket) socket.disconnect();
+            connectSocket(rawInput, connToken);
+          }
+        }, 4000);
       }
     });
 
@@ -610,11 +686,22 @@ document.addEventListener('DOMContentLoaded', () => {
           const existingDetails = el.querySelector('details');
           const isOpen = existingDetails ? existingDetails.open : false;
 
+          const isThink = ev.type === "think";
+          const eventClass = isThink ? "ai-steps-details thought-event" : "ai-steps-details command-event";
+
           if (ev.status === "running") {
-            if (el.dataset.status !== "running") {
+            const contentStr = String(ev.content || '');
+            if (el.dataset.status !== "running" || el.dataset.contentHash !== contentStr) {
               el.dataset.status = "running";
-              let label = ev.type === "think" ? "Thinking & Analyzing..." : "Executing command on PC...";
-              el.innerHTML = `<span class="event-running"><i class="fa-solid fa-circle-notch fa-spin"></i> ${label}</span>`;
+              el.dataset.contentHash = contentStr;
+              let label = isThink ? "Thinking & Analyzing..." : "Executing command on PC...";
+              if (contentStr) {
+                let content = formatMarkdownAndProxyImages(contentStr);
+                const shouldOpenRunning = isThink || isOpen;
+                el.innerHTML = `<details class="${eventClass}"${shouldOpenRunning ? ' open' : ''}><summary class="ai-steps-summary"><i class="fa-solid fa-circle-notch fa-spin" style="color: #a855f7;"></i> ${label}</summary><div class="ai-step"><i class="fa-solid fa-code-commit" style="margin-top: 4px;"></i> <div class="ai-step-content">${content}</div></div></details>`;
+              } else {
+                el.innerHTML = `<span class="event-running"><i class="fa-solid fa-circle-notch fa-spin"></i> ${label}</span>`;
+              }
               didUpdate = true;
             }
           } else if (ev.status === "completed") {
@@ -623,10 +710,10 @@ document.addEventListener('DOMContentLoaded', () => {
               el.dataset.completed = "true";
               el.dataset.contentHash = contentStr;
               let durStr = ev.duration ? ` for ${ev.duration}` : "";
-              let label = ev.type === "think" ? `Thought${durStr}` : `Ran a command${durStr}`;
-              let defaultFallback = ev.type === "think" ? "Analyzed query and planned execution." : "Command completed successfully.";
+              let label = isThink ? `Thought${durStr}` : `Ran a command${durStr}`;
+              let defaultFallback = isThink ? "Analyzed query and planned execution." : "Command completed successfully.";
               let content = ev.content ? formatMarkdownAndProxyImages(ev.content) : defaultFallback;
-              el.innerHTML = `<details class="ai-steps-details"${isOpen ? ' open' : ''}><summary class="ai-steps-summary"><i class="fa-solid fa-chevron-right arrow-icon"></i> ${label}</summary><div class="ai-step"><i class="fa-solid fa-code-commit" style="margin-top: 4px;"></i> <div class="ai-step-content">${content}</div></div></details>`;
+              el.innerHTML = `<details class="${eventClass}"${isOpen ? ' open' : ''}><summary class="ai-steps-summary"><i class="fa-solid fa-chevron-right arrow-icon"></i> ${label}</summary><div class="ai-step"><i class="fa-solid fa-code-commit" style="margin-top: 4px;"></i> <div class="ai-step-content">${content}</div></div></details>`;
               didUpdate = true;
             }
           }
@@ -646,6 +733,10 @@ document.addEventListener('DOMContentLoaded', () => {
               parent.remove();
             }
           });
+
+          // Auto-hide / collapse all details back on mobile once the final response is given
+          const allDetails = container.querySelectorAll('details');
+          allDetails.forEach(d => d.removeAttribute('open'));
 
           if (container.children.length === 0) {
             container.style.display = 'none';
@@ -1227,4 +1318,55 @@ document.addEventListener('DOMContentLoaded', () => {
       showToast('Failed to save Sudo Vault password', 'error');
     }
   };
+
+  // Handle iOS Safari Keyboard & VisualViewport Lock (WhatsApp style)
+  const mainContentEl = document.querySelector('.main-content');
+  const chatInputEl = document.getElementById('chatInput');
+
+  function lockWindowScroll() {
+    if (window.scrollY !== 0) {
+      window.scrollTo(0, 0);
+    }
+  }
+
+  if (window.visualViewport) {
+    const handleViewportResize = () => {
+      lockWindowScroll();
+      if (mainContentEl) {
+        const vh = window.visualViewport.height;
+        mainContentEl.style.height = `${vh}px`;
+      }
+      if (chatHistory) {
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+      }
+    };
+
+    window.visualViewport.addEventListener('resize', handleViewportResize);
+    window.visualViewport.addEventListener('scroll', lockWindowScroll);
+  }
+
+  if (chatInputEl) {
+    chatInputEl.addEventListener('focus', () => {
+      setTimeout(() => {
+        lockWindowScroll();
+        if (window.visualViewport && mainContentEl) {
+          mainContentEl.style.height = `${window.visualViewport.height}px`;
+        }
+        if (chatHistory) {
+          chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+      }, 100);
+    });
+
+    chatInputEl.addEventListener('blur', () => {
+      setTimeout(() => {
+        lockWindowScroll();
+        if (mainContentEl) {
+          mainContentEl.style.height = '100%';
+        }
+      }, 100);
+    });
+  }
+
+  window.addEventListener('scroll', lockWindowScroll);
 });
