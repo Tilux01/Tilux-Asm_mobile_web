@@ -358,12 +358,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (document.getElementById('remote-pc-name')) document.getElementById('remote-pc-name').textContent = pcName;
         if (document.getElementById('drawer-pc-name')) document.getElementById('drawer-pc-name').textContent = pcName;
 
-        localStorage.setItem('tilux_url', targetUrl);
+        localStorage.setItem('tilux_url', rawInput);
         localStorage.setItem('tilux_token', connToken);
 
         pairScreen.classList.add('hidden');
         
         socket.emit('get_history');
+        socket.emit('get_billing_status');
         fetchSettingsForMobile(targetUrl);
 
         if (!hasShownConnectedToast) {
@@ -377,6 +378,220 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Pairing Failed: Invalid Pairing Token. Check token on PC screen.', 'error');
       }
     });
+
+    socket.on('token_usage_update', (data) => {
+      handleTokenUsageUpdate(data);
+    });
+
+  let selectedTopupAmount = 1;
+  let selectedGatewayName = 'paystack';
+  let currentBillingData = null;
+
+  function openWalletModal() {
+      const modal = document.getElementById('walletModal');
+      if (modal) modal.classList.remove('hidden');
+      fetchBillingData();
+  }
+
+  function closeWalletModal() {
+      const modal = document.getElementById('walletModal');
+      if (modal) modal.classList.add('hidden');
+  }
+
+  function closeWalletModalOnOverlay(e) {
+      if (e.target.id === 'walletModal') closeWalletModal();
+  }
+
+  function selectTopupAmount(amt, btnEl) {
+      selectedTopupAmount = amt;
+      document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+      if (btnEl) btnEl.classList.add('active');
+      const customInput = document.getElementById('customAmountInput');
+      if (customInput) customInput.value = '';
+      updatePayButtonText();
+  }
+
+  function onCustomAmountInput(inputEl) {
+      const val = parseFloat(inputEl.value);
+      if (val > 0) {
+          selectedTopupAmount = val;
+          document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+      }
+      updatePayButtonText();
+  }
+
+  function selectGateway(gw) {
+      selectedGatewayName = gw;
+      document.querySelectorAll('.gateway-card').forEach(c => c.classList.remove('active'));
+      const target = document.getElementById(`gw-${gw}`);
+      if (target) target.classList.add('active');
+      updatePayButtonText();
+  }
+
+  function updatePayButtonText() {
+      const btnText = document.getElementById('btnPayText');
+      if (btnText) {
+          btnText.textContent = `Proceed to Paystack ($${Number(selectedTopupAmount).toFixed(2)} USD)`;
+      }
+  }
+
+  function updateWalletModalUI(data) {
+      if (!data) return;
+      currentBillingData = data;
+
+      const billingTrialText = document.getElementById('billingTrialText') || document.getElementById('desktopBillingTrialText');
+      const billingTokenText = document.getElementById('billingTokenText') || document.getElementById('desktopBillingTokenText');
+      const totalTokens = data.total_tokens || 0;
+      const formattedTokens = totalTokens >= 1000 ? (totalTokens / 1000).toFixed(1) + 'k' : totalTokens;
+
+      if (billingTokenText) billingTokenText.textContent = `${formattedTokens} tok`;
+      
+      if (data.is_free_trial) {
+          const hoursLeft = data.remaining_trial_hours !== undefined ? data.remaining_trial_hours : 24;
+          if (billingTrialText) billingTrialText.textContent = `24h Free Trial (${hoursLeft}h)`;
+      } else {
+          const balance = (data.wallet_balance_usd !== undefined) ? '$' + Number(data.wallet_balance_usd).toFixed(2) : '$0.00';
+          if (billingTrialText) billingTrialText.textContent = `Wallet: ${balance}`;
+      }
+
+      // Step Pills in Left Banner Card
+      const trialPillLabel = document.getElementById('modalTrialPillLabel');
+      if (trialPillLabel) {
+          if (data.is_free_trial) {
+              trialPillLabel.textContent = `24h Free Trial (${data.remaining_trial_hours || 24}h remaining)`;
+          } else {
+              trialPillLabel.textContent = `Pay-As-You-Go Billing Active`;
+          }
+      }
+
+      const balancePillLabel = document.getElementById('modalBalancePillLabel');
+      if (balancePillLabel) {
+          balancePillLabel.textContent = `Balance: $${Number(data.wallet_balance_usd || 0).toFixed(2)} USD`;
+      }
+
+      const tokenPillLabel = document.getElementById('modalTokenPillLabel');
+      if (tokenPillLabel) {
+          tokenPillLabel.textContent = `Tokens: ${formattedTokens} processed`;
+      }
+
+      const historyBox = document.getElementById('paymentHistoryList');
+      if (historyBox) {
+          const history = data.payment_history || [];
+          if (history.length === 0) {
+              historyBox.innerHTML = '<div class="history-empty">No previous top-up transactions.</div>';
+          } else {
+              historyBox.innerHTML = history.slice().reverse().map(item => `
+                  <div class="history-item-card">
+                      <div>
+                          <strong style="color: #10b981;">+$${Number(item.amount_usd).toFixed(2)} USD</strong>
+                          <span class="history-gateway-badge">${item.gateway}</span>
+                      </div>
+                      <div style="font-size: 11px; color: #a1a1aa;">
+                          ${new Date(item.timestamp * 1000).toLocaleDateString()} ${new Date(item.timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </div>
+                  </div>
+              `).join('');
+          }
+      }
+  }
+
+  async function fetchBillingData() {
+      try {
+          const baseUrl = window.location.origin.includes('8932') ? '' : (window.SERVER_URL || 'http://127.0.0.1:8932');
+          const res = await fetch(`${baseUrl}/api/billing_status`);
+          const data = await res.json();
+          updateWalletModalUI(data);
+      } catch (e) {
+          console.warn('Failed to fetch billing status', e);
+      }
+  }
+
+  async function executePayment() {
+      const btnPay = document.getElementById('btnPayNow');
+      const btnText = document.getElementById('btnPayText');
+      const emailInput = document.getElementById('topupEmail');
+      const email = (emailInput && emailInput.value.trim()) ? emailInput.value.trim() : '';
+
+      if (!email) {
+          if (window.showToast) window.showToast('Please enter a valid receipt email', 'error');
+          else alert('Please enter a valid receipt email');
+          return;
+      }
+
+      if (!selectedTopupAmount || selectedTopupAmount < 1) {
+          if (window.showToast) window.showToast('Minimum top-up amount is $1.00 USD', 'error');
+          else alert('Minimum top-up amount is $1.00 USD');
+          return;
+      }
+
+      if (btnPay) btnPay.disabled = true;
+      if (btnText) btnText.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Initializing ${selectedGatewayName.toUpperCase()}...`;
+
+      try {
+          const baseUrl = window.location.origin.includes('8932') ? '' : (window.SERVER_URL || 'http://127.0.0.1:8932');
+          const res = await fetch(`${baseUrl}/api/payment/initialize`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  gateway: selectedGatewayName,
+                  amount_usd: selectedTopupAmount,
+                  email: email,
+                  currency: 'USD'
+              })
+          });
+
+          const data = await res.json();
+          if (data.status === 'success' && data.checkout_url) {
+              if (window.showToast) showToast(`Opening ${selectedGatewayName.toUpperCase()} Secure Checkout...`, 'info');
+              const payWindow = window.open(data.checkout_url, '_blank', 'width=600,height=700');
+
+              const verifyRef = data.reference;
+              let pollAttempts = 0;
+              const pollInterval = setInterval(async () => {
+                  pollAttempts++;
+                  if (pollAttempts > 30) {
+                      clearInterval(pollInterval);
+                      if (btnPay) btnPay.disabled = false;
+                      updatePayButtonText();
+                      return;
+                  }
+                  try {
+                      const vRes = await fetch(`${baseUrl}/api/payment/verify`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                              gateway: selectedGatewayName,
+                              reference: verifyRef,
+                              amount_usd: selectedTopupAmount
+                          })
+                      });
+                      const vData = await vRes.json();
+                      if (vData.status === 'success' && vData.billing) {
+                          clearInterval(pollInterval);
+                          if (payWindow && !payWindow.closed) payWindow.close();
+                          updateWalletModalUI(vData.billing);
+                          if (window.showToast) showToast(`🎉 Success! $${selectedTopupAmount.toFixed(2)} added to wallet.`, 'success');
+                          if (btnPay) btnPay.disabled = false;
+                          updatePayButtonText();
+                      }
+                  } catch (err) {}
+              }, 3000);
+          } else {
+              if (window.showToast) showToast(data.message || 'Payment initialization failed', 'error');
+              if (btnPay) btnPay.disabled = false;
+              updatePayButtonText();
+          }
+      } catch (err) {
+          if (window.showToast) showToast('Failed to connect to payment server', 'error');
+          if (btnPay) btnPay.disabled = false;
+          updatePayButtonText();
+      }
+  }
+
+  function handleTokenUsageUpdate(data) {
+    if (!data || typeof data !== 'object') return;
+    updateWalletModalUI(data);
+  }
 
     // Real-Time System Stats Sync to Hamburger Drawer
     socket.on('system_stats', (stats) => {
@@ -436,6 +651,8 @@ document.addEventListener('DOMContentLoaded', () => {
           activeAiMessage = null; // Clear reference ONLY after setting reply
         } else if (data.reply) {
           addMessage('AI', formatMarkdownAndProxyImages(data.reply));
+          const lastMsg = chatHistory.lastElementChild;
+          if (lastMsg) wrapGeneratedImages(lastMsg.querySelector('.msg-content'));
           speakOnMobile(data.reply);
         }
       }
@@ -457,9 +674,19 @@ document.addEventListener('DOMContentLoaded', () => {
       if (chatHistory) chatHistory.innerHTML = '';
       session.messages.forEach(msg => {
         if (msg.sender === 'User') {
-          addMessage('User', msg.text);
+          let finalHtml = msg.text || '';
+          let attHtml = null;
+          if (msg.attachments && msg.attachments.length > 0) {
+            const targetBase = (typeof targetUrl !== 'undefined' && targetUrl) ? targetUrl : (localStorage.getItem('tilux_url') || 'http://127.0.0.1:8932');
+            const hostPrefix = targetBase.replace(/\/+$/, '');
+            let imgHtml = msg.attachments.map(url => `<img src="${hostPrefix}${url}&bypass-tunnel-reminder=true" onclick="openLightbox('${hostPrefix}${url}&bypass-tunnel-reminder=true')" class="chat-attachment-img">`).join('');
+            attHtml = `<div class="chat-attachment-container">${imgHtml}</div>`;
+          }
+          addMessage('User', finalHtml, attHtml);
         } else {
           addMessage('AI', formatMarkdownAndProxyImages(msg.text));
+          const lastMsg = chatHistory.lastElementChild;
+          if (lastMsg) wrapGeneratedImages(lastMsg.querySelector('.msg-content'));
         }
       });
       if (chatHistory) chatHistory.scrollTop = chatHistory.scrollHeight;
@@ -516,15 +743,24 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast('Chat history cleared', 'info');
   };
 
-  function addMessage(sender, htmlText) {
+  function addMessage(sender, htmlText, attachmentsHtml = null) {
     const msgDiv = document.createElement('div');
     msgDiv.className = `message ${sender.toLowerCase()}`;
-    
-    const contentDiv = document.createElement('div');
-    contentDiv.className = 'msg-content';
-    contentDiv.innerHTML = htmlText;
 
-    msgDiv.appendChild(contentDiv);
+    if (attachmentsHtml) {
+      const attContainer = document.createElement('div');
+      attContainer.innerHTML = attachmentsHtml;
+      // The HTML already contains <div class="chat-attachment-container">...</div>
+      msgDiv.appendChild(attContainer.firstChild);
+    }
+
+    if (htmlText && htmlText.trim() !== '') {
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'msg-content';
+      contentDiv.innerHTML = htmlText;
+      msgDiv.appendChild(contentDiv);
+    }
+
     chatHistory.appendChild(msgDiv);
     chatHistory.scrollTop = chatHistory.scrollHeight;
     saveChatState();
@@ -609,7 +845,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const cleanPath = p1.replace(/^file:\/\//, '');
         finalSrc = `${hostPrefix}/api/file?path=${encodeURIComponent(cleanPath)}&bypass-tunnel-reminder=true`;
       }
-      return `src="${finalSrc}" onclick="openLightbox('${finalSrc}')" class="chat-img-preview"`;
+      return `src="${finalSrc}" onclick="openLightbox('${finalSrc}')" class="ai-generated-img"`;
     });
 
     // 2. Convert <a href="..."> links to HTTP proxy URLs with download parameter
@@ -623,13 +859,55 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // 3. Wrap images in chat-img-wrapper with a Save badge button
-    parsed = parsed.replace(/(<img[^>]+class="chat-img-preview"[^>]*>)/gi, (match) => {
+    parsed = parsed.replace(/(<img[^>]+class="ai-generated-img"[^>]*>)/gi, (match) => {
       const srcMatch = match.match(/src=["']([^"']+)["']/i);
       const imgSrc = srcMatch ? srcMatch[1] : '';
       return `<div class="chat-img-wrapper">${match}<button class="img-download-badge" onclick="event.stopPropagation(); downloadImage('${imgSrc}')"><i class="fa-solid fa-download"></i> Save</button></div>`;
     });
 
     return parsed;
+  }
+
+  // Wraps consecutive .ai-generated-img elements in a flex container
+  function wrapGeneratedImages(parentEl) {
+    if (!parentEl) return;
+    const imgs = parentEl.querySelectorAll('img.ai-generated-img');
+    if (imgs.length === 0) return;
+
+    // Group consecutive images (they may be inside <p> or .chat-img-wrapper tags from markdown)
+    const groups = [];
+    let currentGroup = [];
+
+    imgs.forEach(img => {
+      // Get the top-level wrapper (the .chat-img-wrapper, <p>, or the img itself)
+      const wrapper = img.closest('.chat-img-wrapper') || img.closest('p') || img;
+      if (currentGroup.length === 0) {
+        currentGroup.push({ wrapper, img });
+      } else {
+        const lastWrapper = currentGroup[currentGroup.length - 1].wrapper;
+        let next = lastWrapper.nextSibling;
+        while (next && next.nodeType === 3 && next.textContent.trim() === '') {
+          next = next.nextSibling;
+        }
+        if (next === wrapper) {
+          currentGroup.push({ wrapper, img });
+        } else {
+          groups.push([...currentGroup]);
+          currentGroup = [{ wrapper, img }];
+        }
+      }
+    });
+    if (currentGroup.length > 0) groups.push(currentGroup);
+
+    groups.forEach(group => {
+      const container = document.createElement('div');
+      container.className = 'ai-generated-container';
+      const firstWrapper = group[0].wrapper;
+      firstWrapper.parentNode.insertBefore(container, firstWrapper);
+      group.forEach(({ wrapper }) => {
+        container.appendChild(wrapper);
+      });
+    });
   }
 
   window.openLightbox = function(src) {
@@ -754,6 +1032,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const textResponse = document.getElementById(`text-response-${loadingId}`);
         if (textResponse) {
           textResponse.innerHTML = formatMarkdownAndProxyImages(text);
+          wrapGeneratedImages(textResponse);
         }
         chatHistory.scrollTop = chatHistory.scrollHeight;
         saveChatState();
@@ -926,15 +1205,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!text && selectedFiles.length === 0) return;
     if (!socket) return;
 
-    let attachmentHtml = '';
+    let attachmentImgs = '';
     const rawAttachments = [];
 
     for (const file of selectedFiles) {
       if (file.type.startsWith('image/')) {
         const fileUrl = URL.createObjectURL(file);
-        attachmentHtml += `<img src="${fileUrl}" onclick="openLightbox('${fileUrl}')" class="chat-img-preview" style="max-width: 100%; max-height: 180px; object-fit: contain; border-radius: 8px; margin-top: 8px; display: block; cursor: pointer;">`;
-      } else {
-        attachmentHtml += `<div style="background: rgba(255,255,255,0.1); padding: 8px 12px; border-radius: 8px; margin-top: 8px; font-size: 12px; border: 1px solid rgba(255,255,255,0.1);"><i class="fa-solid fa-file-lines" style="color: var(--accent); margin-right: 6px;"></i> ${file.name}</div>`;
+        attachmentImgs += `<img src="${fileUrl}" onclick="openLightbox('${fileUrl}')" class="chat-attachment-img">`;
       }
 
       const b64Data = await new Promise((resolve) => {
@@ -945,10 +1222,10 @@ document.addEventListener('DOMContentLoaded', () => {
       rawAttachments.push({ name: file.name, b64: b64Data });
     }
 
-    const userMsgHtml = (text || '') + (attachmentHtml ? `<div style="display: flex; gap: 8px; flex-wrap: wrap;">${attachmentHtml}</div>` : '');
+    const attHtmlFinal = attachmentImgs ? `<div class="chat-attachment-container">${attachmentImgs}</div>` : null;
 
     transitionToChat();
-    addMessage('User', userMsgHtml);
+    addMessage('User', text || '', attHtmlFinal);
 
     inputField.value = '';
     inputField.style.height = 'auto';

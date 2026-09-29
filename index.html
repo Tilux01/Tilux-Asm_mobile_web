@@ -78,17 +78,39 @@
       <main class="main-content">
         <!-- Top Bar -->
         <header class="top-bar">
-          <div style="display: flex; align-items: center; gap: 12px;">
+          <div class="top-left">
             <button type="button" class="burger-btn" onclick="toggleDrawer()" title="Open System Dashboard">
               <i class="fa-solid fa-bars"></i>
             </button>
+            <div class="brand-badge">
+              <span class="brand-dot"></span>
+              <span class="brand-title">Tilux</span>
+            </div>
           </div>
           <div class="top-actions">
+            <!-- Modern Token & Wallet Multi-Widget -->
+            <div id="billingPill" class="header-billing-widget" onclick="openWalletModal()" title="Click for Token Billing & Top Up Wallet">
+              <div class="widget-balance-pill" id="widgetBalancePill">
+                <i class="fa-solid fa-bolt trial-icon"></i>
+                <span id="billingTrialText">Free Trial</span>
+              </div>
+              <div class="widget-token-pill">
+                <i class="fa-solid fa-coins token-icon"></i>
+                <span id="billingTokenText">0 tok</span>
+              </div>
+            </div>
+
+            <!-- Top Up Action Button -->
+            <button type="button" class="topup-action-btn" onclick="openWalletModal()" title="Top Up Wallet (Paystack & Flutterwave)">
+              <i class="fa-solid fa-wallet"></i>
+              <span class="btn-topup-label">Top Up</span>
+            </button>
+
             <div id="badge" class="connection-pill">
               <span id="badgeDot" class="dot dot-off"></span>
               <span id="badgeText">Disconnected</span>
             </div>
-            <button type="button" class="btn-outline" onclick="clearChat()" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.3);" title="Clear Chat">
+            <button type="button" class="btn-outline-danger" onclick="clearChat()" title="Clear Chat">
               <i class="fa-solid fa-trash"></i>
             </button>
           </div>
@@ -220,6 +242,91 @@
     </div>
   </div>
 
+
+    <!-- Wallet & Billing Hub Modal (Auth Theme Matching Desktop Auth Gate) -->
+    <div id="walletModal" class="wallet-modal-overlay hidden" onclick="closeWalletModalOnOverlay(event)">
+      <div class="auth-theme-wallet-modal" onclick="event.stopPropagation()">
+        <!-- Left Banner: Matching Desktop Auth Page Left Banner -->
+        <div class="auth-left-banner wallet-left-banner">
+          <div class="banner-content">
+            <div class="banner-logo">
+              <i class="fa-solid fa-circle-dot" style="color: #ffffff;"></i> <span>Tilux ASM</span>
+            </div>
+
+            <h1 class="banner-title">Wallet & Billing</h1>
+            <p class="banner-subtitle">Manage your AI token balance and fund your wallet instantly via Paystack or Flutterwave.</p>
+            
+            <div class="banner-steps-stack">
+              <div class="step-pill active" id="modalTrialPill">
+                <span class="step-num"><i class="fa-solid fa-bolt"></i></span>
+                <span class="step-label" id="modalTrialPillLabel">24h Free Trial Active</span>
+              </div>
+              <div class="step-pill" id="modalBalancePill">
+                <span class="step-num"><i class="fa-solid fa-wallet"></i></span>
+                <span class="step-label" id="modalBalancePillLabel">Balance: $0.00 USD</span>
+              </div>
+              <div class="step-pill" id="modalTokenPill">
+                <span class="step-num"><i class="fa-solid fa-coins"></i></span>
+                <span class="step-label" id="modalTokenPillLabel">Tokens: 0 processed</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Side: Dark Form Area Matching Auth Page -->
+        <div class="auth-right-form wallet-right-form">
+          <div class="form-header" style="text-align: left; margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <h2 class="form-title" style="margin: 0; font-size: 22px;">Fund AI Wallet</h2>
+              <button type="button" class="modal-close-btn" onclick="closeWalletModal()" title="Close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <p class="form-subtitle" style="text-align: left; margin-top: 4px; margin-bottom: 0; color: #a1a1aa; font-size: 13px;">Select your top-up amount starting from $1 USD.</p>
+          </div>
+
+          <!-- Amount Presets starting from $1 -->
+          <div class="amount-presets">
+            <button type="button" class="preset-btn active" onclick="selectTopupAmount(1, this)">$1 <span class="pop-tag">Min</span></button>
+            <button type="button" class="preset-btn" onclick="selectTopupAmount(5, this)">$5</button>
+            <button type="button" class="preset-btn" onclick="selectTopupAmount(10, this)">$10 <span class="pop-tag">Popular</span></button>
+            <button type="button" class="preset-btn" onclick="selectTopupAmount(25, this)">$25</button>
+            <button type="button" class="preset-btn" onclick="selectTopupAmount(50, this)">$50</button>
+            <div class="custom-amount-input">
+              <span>$</span>
+              <input type="number" id="customAmountInput" placeholder="Custom" min="1" max="1000" oninput="onCustomAmountInput(this)">
+            </div>
+          </div>
+
+          <!-- Static Gateway Indicator -->
+          <div class="gateway-card active" style="margin-bottom: 18px; cursor: default; border-color: #a855f7; background: linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(99, 102, 241, 0.05));">
+            <div class="gateway-header">
+              <span class="gateway-title"><i class="fa-solid fa-credit-card"></i> Paystack</span>
+              <span class="gateway-check-icon"><i class="fa-solid fa-circle-check" style="color: #10b981;"></i></span>
+            </div>
+            <span class="gateway-desc">Cards, Bank Transfer, USSD, Apple Pay</span>
+          </div>
+
+          <!-- Email Input -->
+          <div class="topup-email-group">
+            <label for="topupEmail" class="field-label" style="display: block; font-size: 12px; color: #a1a1aa; margin-bottom: 6px;">Receipt Email</label>
+            <input type="email" id="topupEmail" class="field-input" placeholder="user@mail.com">
+          </div>
+
+          <!-- Pay Button -->
+          <button type="button" id="btnPayNow" class="btn-pay-now" onclick="executePayment()" style="margin-top: 10px;">
+            <i class="fa-solid fa-shield-halved"></i>
+            <span id="btnPayText">Proceed to Paystack ($1.00 USD)</span>
+          </button>
+
+          <!-- History Section -->
+          <div class="wallet-history-section" style="margin-top: 20px;">
+            <h4 class="section-title"><i class="fa-solid fa-receipt"></i> Recent Top-Up History</h4>
+            <div id="paymentHistoryList" class="history-list-box">
+              <div class="history-empty">No previous top-up transactions.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
   <script src="script.js"></script>
 
