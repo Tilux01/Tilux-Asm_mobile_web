@@ -369,7 +369,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data.status === 'success') {
         isPaired = true;
         pcName = data.pc_name || 'Tilux-PC';
-        updateBadge(`Connected: ${pcName}`, true);
+        updateBadge('Connected', true);
 
         if (document.getElementById('remote-pc-name')) document.getElementById('remote-pc-name').textContent = pcName;
         if (document.getElementById('drawer-pc-name')) document.getElementById('drawer-pc-name').textContent = pcName;
