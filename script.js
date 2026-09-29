@@ -35,7 +35,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let videoStream = null;
   let animFrameId = null;
   let activeAiMessage = null;
-  var isCheckingFirebase = false;
   let activeRemoteSettings = { tts_enabled: true, tts_voice: 'en-GB-SoniaNeural' };
 
   // Restore Saved Credentials & Active Chat State
@@ -172,6 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (freshUrl && shouldReconnect) {
               console.log('[Realtime Firebase] Reconnecting socket to woke/live host:', freshUrl);
+              localStorage.setItem('tilux_tunnel_url', freshUrl);
               connectSocket(cleanHostId, currentToken);
             }
           }
@@ -193,8 +193,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Firebase Host Discovery & Connection Resolution
   async function checkFirebaseForUpdatedUrl(hostIdInput = '', tokenInputParam = '', attemptedUrl = '') {
-    if (isCheckingFirebase) return null;
-    isCheckingFirebase = true;
     try {
       let targetHost = (hostIdInput || '').trim();
       let fetchUrl = 'https://tiluxasm-default-rtdb.firebaseio.com/users/default_user/device.json';
@@ -240,8 +238,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (e) {
       console.warn('[Remote] Firebase URL lookup error:', e);
-    } finally {
-      isCheckingFirebase = false;
     }
     return null;
   }
