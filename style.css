@@ -2212,3 +2212,43 @@ img.ai-generated-img:not(.ai-generated-container .ai-generated-img) {
     box-shadow: 0 4px 15px rgba(0,0,0,0.3) !important;
     display: block;
 }
+
+/* Responsive Desktop-Style Header for Mobile */
+.desktop-style-header .new-chat-btn {
+    border-radius: 9999px;
+    padding: 8px 14px;
+    width: auto;
+    margin-bottom: 0;
+    font-size: 13px;
+    font-weight: 600;
+}
+.desktop-style-header .btn-outline {
+    border-radius: 50%;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    justify-content: center;
+    border: none;
+    background: rgba(255, 255, 255, 0.1);
+}
+.desktop-style-header .btn-outline:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+@media (max-width: 480px) {
+    .desktop-style-header .new-chat-btn {
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+    .desktop-style-header .btn-outline {
+        width: 30px;
+        height: 30px;
+        font-size: 13px;
+    }
+    #billingTrialText {
+        display: none;
+    }
+    .widget-balance-pill {
+        padding: 4px 6px;
+    }
+}
