@@ -36,6 +36,10 @@ document.addEventListener('DOMContentLoaded', () => {
   let animFrameId = null;
   let activeAiMessage = null;
   let activeRemoteSettings = { tts_enabled: true, tts_voice: 'en-GB-SoniaNeural' };
+  
+  let firebaseEventSource = null;
+  let lastWakeToken = null;
+  let currentEventSourceHostId = null;
 
   // Restore Saved Credentials & Active Chat State
   let savedUrl = localStorage.getItem('tilux_url');
@@ -110,11 +114,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Realtime Firebase RTDB Host Listener via Native EventSource (SSE)
-  let firebaseEventSource = null;
-  let lastWakeToken = null;
-
-  let currentEventSourceHostId = null;
-
   function subscribeToFirebaseHostEvents(hostId) {
     if (!hostId || typeof EventSource === 'undefined') return;
     const cleanHostId = hostId.trim();
