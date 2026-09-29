@@ -36,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let animFrameId = null;
   let activeAiMessage = null;
   var isCheckingFirebase = false;
+  let activeRemoteSettings = { tts_enabled: true, tts_voice: 'en-US-AriaNeural' };
 
   // Restore Saved Credentials & Active Chat State
   let savedUrl = localStorage.getItem('tilux_url');
@@ -136,6 +137,10 @@ document.addEventListener('DOMContentLoaded', () => {
           if (!data || typeof data !== 'object') return;
 
           console.log('[Realtime Firebase] Realtime update pushed from host:', data);
+
+          if (data.settings && typeof data.settings === 'object') {
+            activeRemoteSettings = { ...activeRemoteSettings, ...data.settings };
+          }
 
           const freshWakeToken = data.wake_token ? data.wake_token.trim() : '';
           const freshUrlRaw = data.tunnel_url || data.public_url || data.local_url;
@@ -1247,7 +1252,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  let activeRemoteSettings = { tts_enabled: true, tts_voice: 'en-US-AriaNeural' };
   async function fetchSettingsForMobile(serverUrl) {
     if (!serverUrl) return;
     try {
@@ -1265,33 +1269,60 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch(e) {}
   }
 
-  function speakOnMobile(text) {
-    if (!('speechSynthesis' in window) || !text) return;
+  let activeAzureAudio = null;
+
+  async function speakOnMobile(text) {
+    if (!text) return;
     const isEnabled = activeRemoteSettings.tts_enabled !== false && localStorage.getItem('tilux_tts_enabled') !== 'false';
     if (!isEnabled) return;
 
+    // Clean markdown, image tags, code blocks, URLs, and file paths
+    let cleanText = text
+      .replace(/!\[.*?\]\(.*?\)/g, '')
+      .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`[^`]+`/g, '')
+      .replace(/https?:\/\/[^\s]+/g, '')
+      .replace(/\/[\w.\/-]+/g, '')
+      .replace(/[*_~`#>\-]/g, '')
+      .trim();
+
+    if (!cleanText) return;
+    cleanText = cleanText.slice(0, 350);
+
+    const targetVoiceStr = activeRemoteSettings.tts_voice || localStorage.getItem('tilux_tts_voice') || 'en-US-AriaNeural';
+    const targetSpeedStr = activeRemoteSettings.tts_speed || localStorage.getItem('tilux_tts_speed') || '+20%';
+
+    try {
+      if (activeAzureAudio) {
+        activeAzureAudio.pause();
+        activeAzureAudio = null;
+      }
+      
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: cleanText, voiceName: targetVoiceStr, speed: targetSpeedStr })
+      });
+
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        activeAzureAudio = new Audio(url);
+        activeAzureAudio.play();
+        return;
+      }
+    } catch (e) {
+      console.warn('[Mobile Speech Azure API fallback]', e);
+    }
+
+    // Fallback to Native Speech Synthesis
+    if (!('speechSynthesis' in window)) return;
     try {
       window.speechSynthesis.cancel();
       window.speechSynthesis.resume();
 
-      // Clean markdown, image tags, code blocks, URLs, and file paths
-      let cleanText = text
-        .replace(/!\[.*?\]\(.*?\)/g, '')
-        .replace(/\[(.*?)\]\(.*?\)/g, '$1')
-        .replace(/```[\s\S]*?```/g, '')
-        .replace(/`[^`]+`/g, '')
-        .replace(/https?:\/\/[^\s]+/g, '')
-        .replace(/\/[\w.\/-]+/g, '')
-        .replace(/[*_~`#>\-]/g, '')
-        .trim();
-
-      if (!cleanText) return;
-      cleanText = cleanText.slice(0, 350);
-
       const utterance = new SpeechSynthesisUtterance(cleanText);
-      
-      // Sync configured TTS Voice / Language from Settings (e.g., 'fr-FR-DenoisNeural' -> 'fr-FR', 'es-ES-...' -> 'es-ES')
-      const targetVoiceStr = activeRemoteSettings.tts_voice || localStorage.getItem('tilux_tts_voice') || 'en-US-AriaNeural';
       let langPrefix = 'en-US';
       const parts = targetVoiceStr.split('-');
       if (parts.length >= 2) {
@@ -1330,6 +1361,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   window.killAudio = function() {
+    if (activeAzureAudio) {
+      activeAzureAudio.pause();
+      activeAzureAudio = null;
+    }
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
