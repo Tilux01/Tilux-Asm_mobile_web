@@ -854,6 +854,9 @@ document.addEventListener('DOMContentLoaded', () => {
       return `\n![Image Preview](${cleanPath})\n`;
     });
 
+    // Replace local server URLs with the actual tunnel URL so they load on mobile
+    formattedText = formattedText.replace(/http:\/\/(127\.0\.0\.1|localhost):8932/g, hostPrefix);
+
     let parsed = typeof marked !== 'undefined' ? marked.parse(formattedText) : formattedText;
 
     // 1. Convert <img src="..."> tags to HTTP proxy URLs
