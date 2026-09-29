@@ -1613,8 +1613,8 @@ body {
     display: flex;
     align-items: center;
     gap: 5px;
-    background: rgba(168, 85, 247, 0.2);
-    color: #e9d5ff;
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
     padding: 4px 10px;
     border-radius: 16px;
     font-size: 11px;
@@ -1622,7 +1622,7 @@ body {
 }
 
 .widget-balance-pill .trial-icon {
-    color: #f59e0b;
+    color: #ffffff;
     font-size: 12px;
 }
 
