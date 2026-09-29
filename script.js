@@ -1299,7 +1299,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       utterance.lang = langPrefix;
-      utterance.rate = 1.0;
+      utterance.rate = 1.2;
       utterance.pitch = 1.0;
 
       const voices = window.speechSynthesis.getVoices() || [];
