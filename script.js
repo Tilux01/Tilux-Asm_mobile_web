@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let animFrameId = null;
   let activeAiMessage = null;
   var isCheckingFirebase = false;
-  let activeRemoteSettings = { tts_enabled: true, tts_voice: 'en-US-AriaNeural' };
+  let activeRemoteSettings = { tts_enabled: true, tts_voice: 'en-GB-SoniaNeural' };
 
   // Restore Saved Credentials & Active Chat State
   let savedUrl = localStorage.getItem('tilux_url');
@@ -136,9 +136,17 @@ document.addEventListener('DOMContentLoaded', () => {
           const data = payload && payload.data ? payload.data : payload;
           if (!data || typeof data !== 'object') return;
 
-          console.log('[Realtime Firebase] Realtime update pushed from host:', data);
+          console.log('[Realtime Firebase] Realtime update pushed from host:', payload);
 
-          if (data.settings && typeof data.settings === 'object') {
+          // Handle targeted patches vs full root snapshots
+          if (payload.path === '/settings' || (payload.path && payload.path.startsWith('/settings/'))) {
+            if (payload.path === '/settings') {
+               activeRemoteSettings = { ...activeRemoteSettings, ...data };
+            } else {
+               const key = payload.path.replace('/settings/', '');
+               activeRemoteSettings[key] = data;
+            }
+          } else if (data && data.settings && typeof data.settings === 'object') {
             activeRemoteSettings = { ...activeRemoteSettings, ...data.settings };
           }
 
@@ -1316,7 +1324,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!cleanText) return;
     cleanText = cleanText.slice(0, 350);
 
-    const targetVoiceStr = activeRemoteSettings.tts_voice || localStorage.getItem('tilux_tts_voice') || 'en-US-AriaNeural';
+    const targetVoiceStr = activeRemoteSettings.tts_voice || localStorage.getItem('tilux_tts_voice') || 'en-GB-SoniaNeural';
     const targetSpeedStr = activeRemoteSettings.tts_speed || localStorage.getItem('tilux_tts_speed') || '+20%';
 
     try {
