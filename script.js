@@ -202,12 +202,14 @@ document.addEventListener('DOMContentLoaded', () => {
   async function checkFirebaseForUpdatedUrl(hostIdInput = '', tokenInputParam = '', attemptedUrl = '') {
     try {
       let targetHost = (hostIdInput || '').trim();
-      let fetchUrl = 'https://tiluxasm-default-rtdb.firebaseio.com/users/default_user/device.json';
       
-      if (targetHost && (targetHost.startsWith('tilux_host_') || !targetHost.includes('.'))) {
-        fetchUrl = `https://tiluxasm-default-rtdb.firebaseio.com/hosts/${targetHost}.json`;
-        subscribeToFirebaseHostEvents(targetHost);
+      if (!targetHost || (!targetHost.startsWith('tilux_host_') && targetHost.includes('.'))) {
+         console.warn('[Remote] Invalid Host ID provided for Firebase lookup');
+         return null;
       }
+      
+      let fetchUrl = `https://tiluxasm-default-rtdb.firebaseio.com/hosts/${targetHost}.json`;
+      subscribeToFirebaseHostEvents(targetHost);
 
       console.log('[Remote] Looking up Host state from Firebase:', fetchUrl);
       const resp = await fetch(fetchUrl, {
