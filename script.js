@@ -640,6 +640,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Section-Based Event Completion Updates (Thinking / Command Step Complete)
     socket.on('agent_events', (data) => {
       if (!data) return;
+      if (data.session_id && currentSessionId && data.session_id !== currentSessionId) return;
+      
       if (chatHistory && chatHistory.classList.contains('hidden')) {
         transitionToChat();
       }
@@ -655,6 +657,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Final AI Output Reply
     socket.on('agent_reply', (data) => {
       if (data) {
+        if (data.session_id && currentSessionId && data.session_id !== currentSessionId) return;
         if (data.session_id) {
           currentSessionId = data.session_id;
         }
@@ -699,7 +702,12 @@ document.addEventListener('DOMContentLoaded', () => {
           let finalHtml = msg.text || '';
           let attHtml = null;
           if (msg.attachments && msg.attachments.length > 0) {
-            const targetBase = (typeof targetUrl !== 'undefined' && targetUrl) ? targetUrl : (localStorage.getItem('tilux_url') || 'http://127.0.0.1:8932');
+            let targetBase = 'http://127.0.0.1:8932';
+            if (typeof socket !== 'undefined' && socket && socket.io && socket.io.uri) {
+              targetBase = socket.io.uri;
+            } else {
+              targetBase = (typeof targetUrl !== 'undefined' && targetUrl) ? targetUrl : (localStorage.getItem('tilux_url') || 'http://127.0.0.1:8932');
+            }
             const hostPrefix = targetBase.replace(/\/+$/, '');
             let imgHtml = msg.attachments.map(url => `<img src="${hostPrefix}${url}&bypass-tunnel-reminder=true" onclick="openLightbox('${hostPrefix}${url}&bypass-tunnel-reminder=true')" class="chat-attachment-img">`).join('');
             attHtml = `<div class="chat-attachment-container">${imgHtml}</div>`;
@@ -785,6 +793,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     chatHistory.appendChild(msgDiv);
     chatHistory.scrollTop = chatHistory.scrollHeight;
+    
+    if (typeof loadImagesViaFetch === 'function') {
+        loadImagesViaFetch(msgDiv);
+    }
+    
     saveChatState();
   }
 
@@ -849,7 +862,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function formatMarkdownAndProxyImages(text) {
     if (!text) return '';
-    const targetBase = (typeof targetUrl !== 'undefined' && targetUrl) ? targetUrl : (localStorage.getItem('tilux_url') || 'http://127.0.0.1:8932');
+    let targetBase = 'http://127.0.0.1:8932';
+    if (typeof socket !== 'undefined' && socket && socket.io && socket.io.uri) {
+      targetBase = socket.io.uri;
+    } else {
+      targetBase = (typeof targetUrl !== 'undefined' && targetUrl) ? targetUrl : (localStorage.getItem('tilux_url') || 'http://127.0.0.1:8932');
+    }
     const hostPrefix = targetBase.replace(/\/+$/, '');
 
     // Auto-convert any standalone local image file path (even inside backticks or trailing punctuation) into markdown image syntax
@@ -932,6 +950,35 @@ document.addEventListener('DOMContentLoaded', () => {
       group.forEach(({ wrapper }) => {
         container.appendChild(wrapper);
       });
+    });
+
+    loadImagesViaFetch(parentEl);
+  }
+
+  function loadImagesViaFetch(parentEl) {
+    if (!parentEl) return;
+    const imgs = parentEl.querySelectorAll('img.ai-generated-img, img.chat-attachment-img');
+    imgs.forEach(img => {
+      const src = img.getAttribute('src');
+      if (src && src.includes('/api/file?path=') && !src.startsWith('blob:')) {
+            img.dataset.originalSrc = src;
+            img.style.opacity = '0.5';
+            fetch(src, { headers: { 'bypass-tunnel-reminder': 'true', 'ngrok-skip-browser-warning': 'true' } })
+            .then(res => {
+                if(!res.ok) throw new Error('Network error');
+                return res.blob();
+            })
+            .then(blob => {
+                const blobUrl = URL.createObjectURL(blob);
+                img.src = blobUrl;
+                img.style.opacity = '1';
+                img.setAttribute('onclick', `openLightbox('${blobUrl}')`);
+            })
+            .catch(err => {
+                console.error('Failed to load tunnel image via fetch:', err);
+                img.style.opacity = '1';
+            });
+      }
     });
   }
 
