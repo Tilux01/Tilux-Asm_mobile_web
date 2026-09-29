@@ -113,15 +113,23 @@ document.addEventListener('DOMContentLoaded', () => {
   let firebaseEventSource = null;
   let lastWakeToken = null;
 
+  let currentEventSourceHostId = null;
+
   function subscribeToFirebaseHostEvents(hostId) {
     if (!hostId || typeof EventSource === 'undefined') return;
     const cleanHostId = hostId.trim();
     if (!cleanHostId.startsWith('tilux_host_') && cleanHostId.includes('.')) return;
 
+    if (firebaseEventSource && currentEventSourceHostId === cleanHostId) {
+      return; // Already actively subscribed to this host
+    }
+
     if (firebaseEventSource) {
       try { firebaseEventSource.close(); } catch(e) {}
       firebaseEventSource = null;
     }
+    
+    currentEventSourceHostId = cleanHostId;
 
     const sseUrl = `https://tiluxasm-default-rtdb.firebaseio.com/hosts/${cleanHostId}.json`;
     console.log('[Realtime Firebase] Subscribing to EventSource stream for Host:', cleanHostId);
@@ -263,7 +271,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function connectSocket(hostOrUrl, connToken, forceFirebaseCheck = false) {
+  async function connectSocket(hostOrUrl, connToken) {
     const rawInput = (hostOrUrl || '').trim();
     const pairToken = (connToken || '').trim();
 
@@ -284,22 +292,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Check if input is a Host ID or requires Firebase lookup
     if (!targetUrl || (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://') && !targetUrl.includes('trycloudflare') && !targetUrl.includes('ngrok'))) {
-      const isHostId = true;
       const savedTunnelUrl = localStorage.getItem('tilux_tunnel_url');
 
-      if (!forceFirebaseCheck && savedTunnelUrl) {
+      if (savedTunnelUrl) {
         // Fast Fallback: Try saved tunnel immediately
         console.log('[Remote] Fast-connecting to saved tunnel:', savedTunnelUrl);
         targetUrl = savedTunnelUrl;
-        // Initialize Firebase EventSource in the background
-        if (rawInput.startsWith('tilux_host_')) {
-            subscribeToFirebaseHostEvents(rawInput);
-        }
       } else {
-        // Force Firebase fetch (e.g., initial or fast fallback failed)
+        // Initial Firebase fetch (only if no saved tunnel exists)
         console.log('[Remote] Looking up Host ID from Firebase:', rawInput);
-        if (forceFirebaseCheck) showToast('Fetching updated URL from Firebase...', 'info');
-        else showToast('Connecting to Host...', 'info');
+        showToast('Connecting to Host...', 'info');
         
         const resolved = await checkFirebaseForUpdatedUrl(rawInput, pairToken);
         if (resolved && resolved.error) {
@@ -313,6 +315,11 @@ document.addEventListener('DOMContentLoaded', () => {
           resetConnectBtn();
           return;
         }
+      }
+      
+      // Initialize Firebase EventSource in the background to listen for live tunnel rotations
+      if (rawInput.startsWith('tilux_host_')) {
+          subscribeToFirebaseHostEvents(rawInput);
       }
     } else {
       targetUrl = normalizeUrl(targetUrl);
@@ -355,15 +362,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     socket.on('connect_error', (err) => {
       console.error('[Remote] Socket Error:', err);
-      
-      const isHostId = !rawInput.startsWith('http') && !rawInput.includes('.');
-      if (isHostId && !forceFirebaseCheck) {
-        console.log('[Remote] Fast connection failed. Requesting Firebase for fresh URL once...');
-        socket.disconnect();
-        connectSocket(rawInput, pairToken, true);
-        return;
-      }
-
       connectErrCount++;
       updateBadge('Offline (Reconnecting...)', false);
     });
