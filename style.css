@@ -1595,7 +1595,7 @@ body {
     display: flex;
     align-items: center;
     background: rgba(20, 16, 35, 0.85);
-    border: 1px solid rgba(168, 85, 247, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.35);
     border-radius: 20px;
     padding: 3px 4px;
     cursor: pointer;
@@ -1604,7 +1604,7 @@ body {
 }
 
 .header-billing-widget:hover {
-    border-color: rgba(168, 85, 247, 0.8);
+    border-color: rgba(255, 255, 255, 0.8);
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
     transform: translateY(-1px);
 }
@@ -1630,14 +1630,14 @@ body {
     display: flex;
     align-items: center;
     gap: 5px;
-    color: #a855f7;
+    color: #ffffff;
     padding: 4px 10px;
     font-size: 11px;
     font-weight: 600;
 }
 
 .widget-token-pill .token-icon {
-    color: #c084fc;
+    color: #ffffff;
 }
 
 .topup-action-btn {

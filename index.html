@@ -77,18 +77,15 @@
       <!-- Main Content Area -->
       <main class="main-content">
         <!-- Top Bar -->
-        <header class="top-bar desktop-style-header">
+        <header class="top-bar">
           <div class="top-left">
-            <button class="new-chat-btn" onclick="clearChat()">
-              <i class="fa-solid fa-plus"></i> New Chat
-            </button>
-            <button type="button" class="btn-outline" onclick="toggleDrawer()" title="Open System Dashboard">
-              <i class="fa-solid fa-gear"></i>
+            <button type="button" class="burger-btn" onclick="toggleDrawer()" title="Open System Dashboard">
+              <i class="fa-solid fa-bars"></i>
             </button>
           </div>
           <div class="top-actions">
             <!-- Modern Token & Wallet Multi-Widget -->
-            <div id="billingPill" class="header-billing-widget" onclick="openWalletModal()" title="Click for Token Billing">
+            <div id="billingPill" class="header-billing-widget" onclick="openWalletModal()" title="Click for Token Billing & Top Up Wallet">
               <div class="widget-balance-pill" id="widgetBalancePill">
                 <i class="fa-solid fa-bolt trial-icon"></i>
                 <span id="billingTrialText">Free Trial</span>
@@ -98,11 +95,13 @@
                 <span id="billingTokenText">0 tok</span>
               </div>
             </div>
-
             <div id="badge" class="connection-pill">
               <span id="badgeDot" class="dot dot-off"></span>
               <span id="badgeText">Disconnected</span>
             </div>
+            <button type="button" class="btn-outline-danger" onclick="clearChat()" title="Clear Chat">
+              <i class="fa-solid fa-trash"></i>
+            </button>
           </div>
         </header>
 
