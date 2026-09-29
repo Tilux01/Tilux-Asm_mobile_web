@@ -179,7 +179,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (freshUrl && shouldReconnect) {
               console.log('[Realtime Firebase] Reconnecting socket to woke/live host:', freshUrl);
-              localStorage.setItem('tilux_tunnel_url', freshUrl);
               connectSocket(cleanHostId, currentToken);
             }
           }
@@ -292,29 +291,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Check if input is a Host ID or requires Firebase lookup
     if (!targetUrl || (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://') && !targetUrl.includes('trycloudflare') && !targetUrl.includes('ngrok'))) {
-      const savedTunnelUrl = localStorage.getItem('tilux_tunnel_url');
-
-      if (savedTunnelUrl) {
-        // Fast Fallback: Try saved tunnel immediately
-        console.log('[Remote] Fast-connecting to saved tunnel:', savedTunnelUrl);
-        targetUrl = savedTunnelUrl;
+      
+      // Look up Host ID from Firebase on every connection attempt
+      console.log('[Remote] Looking up Host ID from Firebase:', rawInput);
+      showToast('Connecting to Host...', 'info');
+      
+      const resolved = await checkFirebaseForUpdatedUrl(rawInput, pairToken);
+      if (resolved && resolved.error) {
+        resetConnectBtn();
+        return;
+      }
+      if (resolved && typeof resolved === 'string') {
+        targetUrl = resolved;
       } else {
-        // Initial Firebase fetch (only if no saved tunnel exists)
-        console.log('[Remote] Looking up Host ID from Firebase:', rawInput);
-        showToast('Connecting to Host...', 'info');
-        
-        const resolved = await checkFirebaseForUpdatedUrl(rawInput, pairToken);
-        if (resolved && resolved.error) {
-          resetConnectBtn();
-          return;
-        }
-        if (resolved && typeof resolved === 'string') {
-          targetUrl = resolved;
-        } else {
-          showToast('Server is offline or not found.', 'error');
-          resetConnectBtn();
-          return;
-        }
+        showToast('Server is offline or not found.', 'error');
+        resetConnectBtn();
+        return;
       }
       
       // Initialize Firebase EventSource in the background to listen for live tunnel rotations
@@ -384,7 +376,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         localStorage.setItem('tilux_url', rawInput);
         localStorage.setItem('tilux_token', connToken);
-        localStorage.setItem('tilux_tunnel_url', targetUrl);
 
         pairScreen.classList.add('hidden');
         
