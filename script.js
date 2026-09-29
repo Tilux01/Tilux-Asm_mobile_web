@@ -151,7 +151,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
           if (freshUrlRaw) {
             const freshUrl = normalizeUrl(freshUrlRaw);
-            if (freshUrl && (isServerWokenUp || !socket || !socket.connected)) {
+            let shouldReconnect = false;
+            if (isServerWokenUp) {
+              shouldReconnect = true;
+            } else if (socket && socket.io && freshUrl !== normalizeUrl(socket.io.uri)) {
+              shouldReconnect = true;
+            }
+            if (freshUrl && shouldReconnect) {
               console.log('[Realtime Firebase] Reconnecting socket to woke/live host:', freshUrl);
               connectSocket(cleanHostId, currentToken);
             }
@@ -315,14 +321,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     let connectErrCount = 0;
-    let reconnectCheckTimer = null;
-
+    
     socket.on('connect', () => {
       connectErrCount = 0;
-      if (reconnectCheckTimer) {
-        clearInterval(reconnectCheckTimer);
-        reconnectCheckTimer = null;
-      }
       updateBadge('Authenticating...', false);
       socket.emit('pair_device', { token: connToken });
     });
@@ -331,19 +332,6 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('[Remote] Socket Error:', err);
       connectErrCount++;
       updateBadge('Reconnecting...', false);
-
-      // Periodically check Firebase RTDB in case tunnel URL changed or host rebooted
-      if (!reconnectCheckTimer && rawInput) {
-        reconnectCheckTimer = setInterval(async () => {
-          const freshUrl = await checkFirebaseForUpdatedUrl(rawInput, connToken, targetUrl);
-          if (freshUrl && typeof freshUrl === 'string' && freshUrl !== targetUrl) {
-            clearInterval(reconnectCheckTimer);
-            reconnectCheckTimer = null;
-            if (socket) socket.disconnect();
-            connectSocket(rawInput, connToken);
-          }
-        }, 4000);
-      }
     });
 
     let hasShownConnectedToast = false;
