@@ -664,14 +664,18 @@ document.addEventListener('DOMContentLoaded', () => {
           }
           if (data.reply) {
             activeAiMessage.setReply(data.reply);
-            speakOnMobile(data.reply);
+            if (data.requested_by === socket.id) {
+              speakOnMobile(data.reply);
+            }
           }
           activeAiMessage = null; // Clear reference ONLY after setting reply
         } else if (data.reply) {
           addMessage('AI', formatMarkdownAndProxyImages(data.reply));
           const lastMsg = chatHistory.lastElementChild;
           if (lastMsg) wrapGeneratedImages(lastMsg.querySelector('.msg-content'));
-          speakOnMobile(data.reply);
+          if (data.requested_by === socket.id) {
+            speakOnMobile(data.reply);
+          }
         }
       }
       toggleSendIcon(false);
