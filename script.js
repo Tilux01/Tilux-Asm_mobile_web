@@ -343,13 +343,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     updateBadge('Connecting via Tunnel...', false);
 
+    console.log('[Remote] Initializing Socket.io connection to:', targetUrl);
     socket = io(targetUrl, {
       transports: ['polling', 'websocket'],
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 4000,
-      timeout: 10000
+      timeout: 10000,
+      extraHeaders: {
+        'bypass-tunnel-reminder': 'true'
+      }
     });
 
     let connectErrCount = 0;
