@@ -1299,9 +1299,13 @@ document.addEventListener('DOMContentLoaded', () => {
         activeAzureAudio = null;
       }
       
-      const res = await fetch('/api/tts', {
+      const backendUrl = normalizeUrl(localStorage.getItem('tilux_url'));
+      const res = await fetch(`${backendUrl}/api/tts`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'bypass-tunnel-reminder': 'true'
+        },
         body: JSON.stringify({ text: cleanText, voiceName: targetVoiceStr, speed: targetSpeedStr })
       });
 
