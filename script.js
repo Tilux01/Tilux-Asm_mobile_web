@@ -1295,6 +1295,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data) {
           activeRemoteSettings = data;
           if (data.tts_voice) localStorage.setItem('tilux_tts_voice', data.tts_voice);
+          if (data.tts_speed) localStorage.setItem('tilux_tts_speed', data.tts_speed);
           if (data.tts_enabled !== undefined) localStorage.setItem('tilux_tts_enabled', data.tts_enabled ? 'true' : 'false');
         }
       }
