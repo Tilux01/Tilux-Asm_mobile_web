@@ -337,7 +337,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     console.log('[Remote] Initializing Socket.io connection to:', targetUrl);
     socket = io(targetUrl, {
-      transports: ['polling', 'websocket'],
+      transports: ['websocket'],
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
