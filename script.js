@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let animFrameId = null;
   let activeAiMessage = null;
   let activeRemoteSettings = { tts_enabled: true, tts_voice: 'en-GB-SoniaNeural' };
-  
+
   let firebaseEventSource = null;
   let lastWakeToken = null;
   let currentEventSourceHostId = null;
@@ -114,6 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Realtime Firebase RTDB Host Listener via Native EventSource (SSE)
+
   function subscribeToFirebaseHostEvents(hostId) {
     if (!hostId || typeof EventSource === 'undefined') return;
     const cleanHostId = hostId.trim();
