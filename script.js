@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Purge legacy localtunnel URLs from localStorage
   if (savedUrl && savedUrl.includes('loca.lt')) {
-    console.warn('[Remote] Purging legacy localtunnel URL from storage:', savedUrl);
+    
     localStorage.removeItem('tilux_url');
     savedUrl = null;
   }
@@ -113,7 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return (isHttps ? 'https://' : 'http://') + clean;
   }
 
-  // Realtime Firebase RTDB Host Listener via Native EventSource (SSE)
+  // Realtime Sync Database Host Listener via Native EventSource (SSE)
 
   function subscribeToFirebaseHostEvents(hostId) {
     if (!hostId || typeof EventSource === 'undefined') return;
@@ -132,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
     currentEventSourceHostId = cleanHostId;
 
     const sseUrl = `https://tiluxasm-default-rtdb.firebaseio.com/hosts/${cleanHostId}.json`;
-    console.log('[Realtime Firebase] Subscribing to EventSource stream for Host:', cleanHostId);
+    
 
     try {
       firebaseEventSource = new EventSource(sseUrl);
@@ -143,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const data = payload && payload.data ? payload.data : payload;
           if (!data || typeof data !== 'object') return;
 
-          console.log('[Realtime Firebase] Realtime update pushed from host:', payload);
+          
 
           // Handle targeted patches vs full root snapshots
           if (payload.path === '/settings' || (payload.path && payload.path.startsWith('/settings/'))) {
@@ -163,7 +163,6 @@ document.addEventListener('DOMContentLoaded', () => {
           let isServerWokenUp = false;
           if (freshWakeToken) {
             if (lastWakeToken !== null && freshWakeToken !== lastWakeToken) {
-              console.log('[Realtime Firebase] ⚡ Wake token changed (' + lastWakeToken + ' -> ' + freshWakeToken + '). Server has woken up/rebooted!');
               isServerWokenUp = true;
             }
             lastWakeToken = freshWakeToken;
@@ -178,12 +177,12 @@ document.addEventListener('DOMContentLoaded', () => {
               shouldReconnect = true;
             }
             if (freshUrl && shouldReconnect) {
-              console.log('[Realtime Firebase] Reconnecting socket to woke/live host:', freshUrl);
+              
               connectSocket(cleanHostId, currentToken);
             }
           }
         } catch (err) {
-          console.warn('[Realtime Firebase Parse Warning]', err);
+          
         }
       };
 
@@ -191,10 +190,10 @@ document.addEventListener('DOMContentLoaded', () => {
       firebaseEventSource.addEventListener('patch', (e) => handleFirebaseData(e.data));
 
       firebaseEventSource.onerror = () => {
-        console.warn('[Realtime Firebase] EventSource reconnecting...');
+        
       };
     } catch(err) {
-      console.warn('[Realtime Firebase EventSource Setup Error]', err);
+      
     }
   }
 
@@ -204,29 +203,29 @@ document.addEventListener('DOMContentLoaded', () => {
       let targetHost = (hostIdInput || '').trim();
       
       if (!targetHost || (!targetHost.startsWith('tilux_host_') && targetHost.includes('.'))) {
-         console.warn('[Remote] Invalid Host ID provided for Firebase lookup');
+         
          return null;
       }
       
       let fetchUrl = `https://tiluxasm-default-rtdb.firebaseio.com/hosts/${targetHost}.json`;
       subscribeToFirebaseHostEvents(targetHost);
 
-      console.log('[Remote] Looking up Host state from Firebase:', fetchUrl);
+      
       const resp = await fetch(fetchUrl, {
         headers: { 'bypass-tunnel-reminder': 'true' }
       });
       if (resp.ok) {
         const data = await resp.json();
         if (!data) {
-          console.warn('[Remote] No Host found for ID:', targetHost);
+          
           return null;
         }
 
-        // Auto-adopt live Pair Token from Firebase RTDB for Host ID lookup
+        // Auto-adopt live Pair Token from Sync Database for Host ID lookup
         if (data.pair_token && data.pair_token.trim()) {
           const freshToken = data.pair_token.trim();
           if (freshToken !== currentToken) {
-            console.log('[Remote] Auto-adopting updated pair token from Firebase RTDB:', freshToken);
+            
             currentToken = freshToken;
             if (tokenInput) tokenInput.value = freshToken;
             localStorage.setItem('tilux_token', freshToken);
@@ -238,15 +237,15 @@ document.addEventListener('DOMContentLoaded', () => {
           const freshUrl = normalizeUrl(freshUrlRaw);
           const isPageHttps = window.location.protocol === 'https:';
           if (isPageHttps && freshUrl.startsWith('http://')) {
-            console.warn('[Remote] Firebase returned HTTP URL on HTTPS page:', freshUrl);
+            
             return null;
           }
-          console.log('[Remote] Resolved live PC URL from Firebase:', freshUrl);
+          
           return freshUrl;
         }
       }
     } catch (e) {
-      console.warn('[Remote] Firebase URL lookup error:', e);
+      
     }
     return null;
   }
@@ -286,7 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Purge obsolete loca.lt URLs
     if (targetUrl.includes('loca.lt')) {
-      console.warn('[Remote] Purging obsolete loca.lt domain:', targetUrl);
+      
       localStorage.removeItem('tilux_url');
       targetUrl = '';
     }
@@ -295,7 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!targetUrl || (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://') && !targetUrl.includes('trycloudflare') && !targetUrl.includes('ngrok'))) {
       
       // Look up Host ID from Firebase on every connection attempt
-      console.log('[Remote] Looking up Host ID from Firebase:', rawInput);
+      
       showToast('Connecting to Host...', 'info');
       
       const resolved = await checkFirebaseForUpdatedUrl(rawInput, pairToken);
@@ -321,7 +320,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (socket && socket.connected) {
       if (targetUrl === normalizeUrl(serverUrlInput.value) && pairToken === currentToken) {
-        console.log('[Remote] Already connected to this target');
+        
         resetConnectBtn();
         return;
       }
@@ -337,7 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     updateBadge('Connecting via Tunnel...', false);
 
-    console.log('[Remote] Initializing Socket.io connection to:', targetUrl);
+    
     socket = io(targetUrl, {
       transports: ['websocket'],
       reconnection: true,
@@ -359,7 +358,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     socket.on('connect_error', (err) => {
-      console.error('[Remote] Socket Error:', err);
+      
       connectErrCount++;
       updateBadge('Offline (Reconnecting...)', false);
     });
@@ -391,7 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
           showToast(`Connected to ${pcName}`, 'success');
         }
       } else {
-        console.warn('[Remote] Pair authorization status:', data.status);
+        
         updateBadge('Pairing Failed: Invalid Token', false);
         showToast('Pairing Failed: Invalid Pairing Token. Check token on PC screen.', 'error');
       }
@@ -520,7 +519,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const data = await res.json();
           updateWalletModalUI(data);
       } catch (e) {
-          console.warn('Failed to fetch billing status', e);
+          
       }
   }
 
@@ -731,7 +730,6 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('disconnect', (reason) => {
       isPaired = false;
       updateBadge('Reconnecting...', false);
-      console.warn('[Remote] Socket disconnected (reconnection active):', reason);
       // Keep chatScreen visible during transient reconnects
     });
   }
@@ -847,7 +845,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Media downloaded to phone', 'success');
       })
       .catch(err => {
-        console.error('Blob download failed:', err);
+        
         showToast('Download failed. Ensure PC server is online.', 'error');
       });
   };
@@ -975,7 +973,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 img.setAttribute('onclick', `openLightbox('${blobUrl}')`);
             })
             .catch(err => {
-                console.error('Failed to load tunnel image via fetch:', err);
+                
                 img.style.opacity = '1';
             });
       }
@@ -1397,7 +1395,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
     } catch (e) {
-      console.warn('[Mobile Speech Azure API fallback]', e);
+      
     }
 
     // Fallback to Native Speech Synthesis
@@ -1434,7 +1432,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       window.speechSynthesis.speak(utterance);
     } catch (e) {
-      console.warn('[Mobile Speech Error]', e);
+      
     }
   }
 
@@ -1618,7 +1616,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function parseQR(data) {
     let hostOrUrl = '', tok = '';
-    console.log('[Remote QR] Raw Scanned Data:', data);
+    
     try {
       const obj = JSON.parse(data);
       hostOrUrl = obj.host_id || obj.hostId || obj.url || obj.serverUrl || '';
