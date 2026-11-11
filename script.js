@@ -465,7 +465,8 @@ document.addEventListener('DOMContentLoaded', () => {
       
       if (data.is_free_trial) {
           const hoursLeft = data.remaining_trial_hours !== undefined ? data.remaining_trial_hours : 24;
-          if (billingTrialText) billingTrialText.textContent = `24h Free Trial (${hoursLeft}h)`;
+          const trialRem = data.trial_remaining_usd !== undefined ? '$' + Number(data.trial_remaining_usd).toFixed(2) : '$1.00';
+          if (billingTrialText) billingTrialText.textContent = `Trial: ${trialRem} (${hoursLeft}h)`;
       } else {
           const balance = (data.wallet_balance_usd !== undefined) ? '$' + Number(data.wallet_balance_usd).toFixed(2) : '$0.00';
           if (billingTrialText) billingTrialText.textContent = `Wallet: ${balance}`;
@@ -475,7 +476,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const trialPillLabel = document.getElementById('modalTrialPillLabel');
       if (trialPillLabel) {
           if (data.is_free_trial) {
-              trialPillLabel.textContent = `24h Free Trial (${data.remaining_trial_hours || 24}h remaining)`;
+              const trialRem = data.trial_remaining_usd !== undefined ? '$' + Number(data.trial_remaining_usd).toFixed(2) : '$1.00';
+              trialPillLabel.textContent = `24h Free Trial (${trialRem} of $1.00 · ${data.remaining_trial_hours || 24}h)`;
+          } else if (data.remaining_trial_seconds > 0) {
+              trialPillLabel.textContent = `Trial $1.00 Limit Reached`;
           } else {
               trialPillLabel.textContent = `Pay-As-You-Go Billing Active`;
           }
@@ -877,6 +881,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Replace local server URLs with the actual tunnel URL so they load on mobile
     formattedText = formattedText.replace(/http:\/\/(127\.0\.0\.1|localhost):8932/g, hostPrefix);
 
+    // Sanitize em dashes, en dashes, horizontal bars, and html entities globally
+    formattedText = formattedText.replace(/[—–―⸺⸻]/g, '-').replace(/&(?:mdash|ndash|#8212|#8211|#x2014|#x2013);/gi, '-');
+
     let parsed = typeof marked !== 'undefined' ? marked.parse(formattedText) : formattedText;
 
     // 1. Convert <img src="..."> tags to HTTP proxy URLs
@@ -1074,23 +1081,8 @@ document.addEventListener('DOMContentLoaded', () => {
       setReply: function(text) {
         const container = document.getElementById(`events-container-${loadingId}`);
         if (container) {
-          const runningEls = container.querySelectorAll('.event-running');
-          runningEls.forEach(el => {
-            const parent = el.closest('.ai-event');
-            if (parent && parent.dataset.completed !== "true") {
-              parent.remove();
-            }
-          });
-
-          // Auto-hide / collapse all details back on mobile once the final response is given
-          const allDetails = container.querySelectorAll('details');
-          allDetails.forEach(d => d.removeAttribute('open'));
-
-          if (container.children.length === 0) {
-            container.style.display = 'none';
-          } else {
-            container.style.display = '';
-          }
+          container.innerHTML = '';
+          container.style.display = 'none';
         }
 
         // Remove loading animation bar once final reply is received

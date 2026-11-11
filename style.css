@@ -648,11 +648,24 @@ body {
     pointer-events: none;
 }
 
+@keyframes swayRightLeftMobile {
+    0%, 50%, 100% {
+        transform: translateX(0) scale(1.08);
+    }
+    25% {
+        transform: translateX(6px) scale(1.08);
+    }
+    75% {
+        transform: translateX(-6px) scale(1.08);
+    }
+}
+
 @media (hover: hover) {
     .scroll-bottom-btn:hover {
         background: var(--accent);
         border-color: var(--accent);
-        transform: scale(1.12);
+        box-shadow: 0 6px 20px rgba(168, 85, 247, 0.5), 0 0 15px rgba(168, 85, 247, 0.4);
+        animation: swayRightLeftMobile 0.55s ease-in-out infinite;
     }
 }
 
@@ -660,6 +673,7 @@ body {
     background: var(--accent);
     border-color: var(--accent);
     transform: scale(0.95);
+    animation: none;
 }
 
 /* ==========================================================================
@@ -762,10 +776,14 @@ body {
 }
 
 .ai-event {
-    margin-bottom: 2px;
+    margin-bottom: 8px;
     max-width: 100%;
     width: 100%;
     box-sizing: border-box;
+}
+
+.ai-event:last-child {
+    margin-bottom: 4px;
 }
 
 .event-running {
@@ -775,6 +793,7 @@ body {
     align-items: center;
     gap: 8px;
     word-break: break-word;
+    padding: 2px 0;
 }
 
 .event-running i {
@@ -782,7 +801,7 @@ body {
 }
 
 .ai-steps-details {
-    margin-bottom: 2px;
+    margin-bottom: 0;
     max-width: 100%;
     width: 100%;
     box-sizing: border-box;
@@ -804,7 +823,7 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 8px;
     padding: 8px 12px;
-    margin-top: 4px;
+    margin-top: 6px;
     margin-bottom: 4px;
 }
 
