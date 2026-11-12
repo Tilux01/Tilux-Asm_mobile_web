@@ -669,14 +669,14 @@ document.addEventListener('DOMContentLoaded', () => {
             activeAiMessage.updateEvents(data.events);
           }
           if (data.reply) {
-            activeAiMessage.setReply(data.reply);
+            activeAiMessage.setReply(data.reply, data.worked_for);
             if (data.requested_by === socket.id) {
               speakOnMobile(data.reply);
             }
           }
           activeAiMessage = null; // Clear reference ONLY after setting reply
         } else if (data.reply) {
-          addMessage('AI', formatMarkdownAndProxyImages(data.reply));
+          addMessage('AI', formatMarkdownAndProxyImages(data.reply), null, data.worked_for);
           const lastMsg = chatHistory.lastElementChild;
           if (lastMsg) wrapGeneratedImages(lastMsg.querySelector('.msg-content'));
           if (data.requested_by === socket.id) {
@@ -717,7 +717,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
           addMessage('User', finalHtml, attHtml);
         } else {
-          addMessage('AI', formatMarkdownAndProxyImages(msg.text));
+          addMessage('AI', formatMarkdownAndProxyImages(msg.text), null, msg.worked_for);
           const lastMsg = chatHistory.lastElementChild;
           if (lastMsg) wrapGeneratedImages(lastMsg.querySelector('.msg-content'));
         }
@@ -775,7 +775,7 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast('Chat history cleared', 'info');
   };
 
-  function addMessage(sender, htmlText, attachmentsHtml = null) {
+  function addMessage(sender, htmlText, attachmentsHtml = null, workedFor = null) {
     const msgDiv = document.createElement('div');
     msgDiv.className = `message ${sender.toLowerCase()}`;
 
@@ -790,6 +790,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const contentDiv = document.createElement('div');
       contentDiv.className = 'msg-content';
       contentDiv.innerHTML = htmlText;
+      if (workedFor && sender.toLowerCase() === 'ai') {
+        const workedDiv = document.createElement('div');
+        workedDiv.className = 'worked-for-container';
+        workedDiv.innerHTML = `<span class="worked-for-badge"><i class="fa-solid fa-clock"></i> Worked for ${workedFor}</span>`;
+        contentDiv.appendChild(workedDiv);
+      }
       msgDiv.appendChild(contentDiv);
     }
 
@@ -1013,7 +1019,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const contentDiv = document.createElement('div');
     contentDiv.className = 'msg-content';
-    contentDiv.innerHTML = `<div id="events-container-${loadingId}" class="events-container"></div><div id="text-response-${loadingId}"></div><div id="ai-loading-${loadingId}" class="ai-loading-indicator"><div class="typing-indicator"><span></span><span></span><span></span></div></div>`;
+    contentDiv.innerHTML = `<div id="events-container-${loadingId}" class="events-container"></div><div id="text-response-${loadingId}"></div><div id="worked-for-${loadingId}" class="worked-for-container" style="display: none;"></div><div id="ai-loading-${loadingId}" class="ai-loading-indicator"><div class="typing-indicator"><span></span><span></span><span></span></div></div>`;
     
     msgDiv.appendChild(contentDiv);
     chatHistory.appendChild(msgDiv);
@@ -1078,7 +1084,7 @@ document.addEventListener('DOMContentLoaded', () => {
           chatHistory.scrollTop = chatHistory.scrollHeight;
         }
       },
-      setReply: function(text) {
+      setReply: function(text, workedFor) {
         const container = document.getElementById(`events-container-${loadingId}`);
         if (container) {
           container.innerHTML = '';
@@ -1095,6 +1101,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (textResponse) {
           textResponse.innerHTML = formatMarkdownAndProxyImages(text);
           wrapGeneratedImages(textResponse);
+        }
+        const workedContainer = document.getElementById(`worked-for-${loadingId}`);
+        if (workedContainer && workedFor) {
+          workedContainer.innerHTML = `<span class="worked-for-badge"><i class="fa-solid fa-clock"></i> Worked for ${workedFor}</span>`;
+          workedContainer.style.display = 'block';
         }
         chatHistory.scrollTop = chatHistory.scrollHeight;
         saveChatState();
