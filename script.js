@@ -1079,7 +1079,11 @@ document.addEventListener('DOMContentLoaded', () => {
               let durStr = ev.duration ? ` for ${ev.duration}` : "";
               let label = isThink ? `Thought${durStr}` : `Ran a command${durStr}`;
               let defaultFallback = isThink ? "Analyzed query and planned execution." : "Command completed successfully.";
-              let content = ev.content ? formatMarkdownAndProxyImages(ev.content) : defaultFallback;
+              let rawContent = ev.content || "";
+              if (isThink && /\b(?:rule|rules|instruction|prompt|guardrail|policy|cannot\s+reveal|not\s+reveal|share\s+information)\b/i.test(rawContent)) {
+                rawContent = defaultFallback;
+              }
+              let content = rawContent ? formatMarkdownAndProxyImages(rawContent) : defaultFallback;
               el.innerHTML = `<details class="${eventClass}"${isOpen ? ' open' : ''}><summary class="ai-steps-summary"><i class="fa-solid fa-chevron-right arrow-icon"></i> ${label}</summary><div class="ai-step"><i class="fa-solid fa-code-commit" style="margin-top: 4px;"></i> <div class="ai-step-content">${content}</div></div></details>`;
               didUpdate = true;
             }
@@ -1533,7 +1537,12 @@ document.addEventListener('DOMContentLoaded', () => {
       initialView.classList.remove('hidden');
       initialView.classList.remove('fade-out');
     }
-    if (orbContainer) orbContainer.classList.remove('docked');
+    if (orbContainer) {
+      orbContainer.classList.remove('docked');
+      if (initialView && !initialView.contains(orbContainer)) {
+        initialView.insertBefore(orbContainer, initialView.firstChild);
+      }
+    }
     if (drawerOverlay) drawerOverlay.classList.remove('active');
     showToast('New Chat started', 'info');
   };
@@ -1554,6 +1563,61 @@ document.addEventListener('DOMContentLoaded', () => {
     drawerOverlay.classList.remove('active');
     updateBadge('Disconnected', false);
     showToast('Disconnected from PC', 'info');
+  };
+
+  window.restartServerFromMobile = async function() {
+    if (!confirm("Are you sure you want to terminate and restart the PC server and main app?")) return;
+
+    const host = currentHost || localStorage.getItem("tilux_active_host") || "http://127.0.0.1:8932";
+    const tok = currentToken || localStorage.getItem("tilux_pair_token") || "";
+
+    showToast("Sending restart command to PC server...", "info");
+
+    try {
+      const res = await fetch(`${host}/api/restart_server`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Pair-Token': tok
+        },
+        body: JSON.stringify({ restart_app: true })
+      });
+      const data = await res.json();
+      showToast(data.message || "PC Server & App rebooting...", "warning");
+    } catch(err) {
+      showToast("Restart triggered. Waiting for PC to reboot...", "warning");
+    }
+
+    if (socket) {
+      socket.disconnect();
+    }
+    updateBadge('Rebooting...', false);
+
+    // Poll host until back online
+    let attempts = 0;
+    const pollInterval = setInterval(async () => {
+      attempts++;
+      try {
+        const check = await fetch(`${host}/api/host_info`, {
+          headers: { 'X-Pair-Token': tok },
+          cache: 'no-store'
+        });
+        if (check.ok) {
+          clearInterval(pollInterval);
+          showToast("PC Server & App back online!", "success");
+          updateBadge('Connected', true);
+          if (host && tok) {
+            connectSocket(host, tok);
+          }
+        }
+      } catch(e) {}
+
+      if (attempts > 30) {
+        clearInterval(pollInterval);
+        showToast("Restart took longer than expected. Tap Connect to retry.", "error");
+        updateBadge('Disconnected', false);
+      }
+    }, 1000);
   };
 
   // Event Listeners
