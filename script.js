@@ -170,14 +170,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
           if (freshUrlRaw) {
             const freshUrl = normalizeUrl(freshUrlRaw);
+            const isPageHttps = window.location.protocol === 'https:';
+            if (isPageHttps && freshUrl.startsWith('http://')) {
+              return;
+            }
             let shouldReconnect = false;
+            const activeUri = (socket && socket.io && socket.io.uri) ? normalizeUrl(socket.io.uri) : '';
             if (isServerWokenUp) {
               shouldReconnect = true;
-            } else if (socket && socket.io && freshUrl !== normalizeUrl(socket.io.uri)) {
+            } else if (socket && (!socket.connected || (activeUri && freshUrl !== activeUri))) {
               shouldReconnect = true;
             }
             if (freshUrl && shouldReconnect) {
-              
               connectSocket(cleanHostId, currentToken);
             }
           }
@@ -319,8 +323,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (socket && socket.connected) {
-      if (targetUrl === normalizeUrl(serverUrlInput.value) && pairToken === currentToken) {
-        
+      const activeUri = (socket.io && socket.io.uri) ? normalizeUrl(socket.io.uri) : '';
+      if (activeUri && activeUri === normalizeUrl(targetUrl) && pairToken === currentToken) {
         resetConnectBtn();
         return;
       }
@@ -332,6 +336,7 @@ document.addEventListener('DOMContentLoaded', () => {
     currentToken = pairToken;
 
     localStorage.setItem('tilux_url', rawInput);
+    localStorage.setItem('tilux_actual_url', targetUrl);
     localStorage.setItem('tilux_token', pairToken);
 
     updateBadge('Connecting via Tunnel...', false);
@@ -376,6 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (document.getElementById('drawer-pc-name')) document.getElementById('drawer-pc-name').textContent = pcName;
 
         localStorage.setItem('tilux_url', rawInput);
+        localStorage.setItem('tilux_actual_url', targetUrl);
         localStorage.setItem('tilux_token', connToken);
 
         pairScreen.classList.add('hidden');
@@ -1380,7 +1386,7 @@ document.addEventListener('DOMContentLoaded', () => {
         activeAzureAudio = null;
       }
       
-      const backendUrl = normalizeUrl(localStorage.getItem('tilux_url'));
+      const backendUrl = (socket && socket.io && socket.io.uri) ? normalizeUrl(socket.io.uri) : normalizeUrl(localStorage.getItem('tilux_actual_url') || localStorage.getItem('tilux_url'));
       const res = await fetch(`${backendUrl}/api/tts`, {
         method: 'POST',
         headers: { 
@@ -1665,10 +1671,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  function getActiveBackendUrl() {
+    return (socket && socket.io && socket.io.uri) ? normalizeUrl(socket.io.uri) : normalizeUrl(localStorage.getItem('tilux_actual_url') || localStorage.getItem('tilux_url'));
+  }
+
   window.loadMobileSudoPass = async function() {
-    if (!currentUrl) return;
+    const activeUrl = getActiveBackendUrl();
+    if (!activeUrl) return;
     try {
-      const res = await fetch(`${currentUrl}/api/settings`, {
+      const res = await fetch(`${activeUrl}/api/settings`, {
         headers: { 'bypass-tunnel-reminder': 'true' }
       });
       const data = await res.json();
@@ -1680,17 +1691,18 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   window.saveMobileSudoPass = async function() {
-    if (!currentUrl) return;
+    const activeUrl = getActiveBackendUrl();
+    if (!activeUrl) return;
     const input = document.getElementById('mobile-sudo-pass-input');
     if (!input) return;
     try {
-      const getRes = await fetch(`${currentUrl}/api/settings`, {
+      const getRes = await fetch(`${activeUrl}/api/settings`, {
         headers: { 'bypass-tunnel-reminder': 'true' }
       });
       const currentSettings = await getRes.json();
       currentSettings.sudo_password = input.value;
 
-      await fetch(`${currentUrl}/api/settings`, {
+      await fetch(`${activeUrl}/api/settings`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
