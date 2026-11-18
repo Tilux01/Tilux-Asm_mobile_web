@@ -589,7 +589,8 @@ document.addEventListener('DOMContentLoaded', () => {
                           body: JSON.stringify({
                               gateway: selectedGatewayName,
                               reference: verifyRef,
-                              amount_usd: selectedTopupAmount
+                              amount_usd: selectedTopupAmount,
+                              email: email
                           })
                       });
                       const vData = await vRes.json();
